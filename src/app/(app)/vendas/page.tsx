@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatarMoeda, formatarNumero } from "@/lib/formato";
+import { gerarLeitura } from "@/lib/insights";
 import { buscarMetas, calcularRitmo, metaDaEmpresa, metaDaUnidade } from "@/lib/metas";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
@@ -128,9 +129,11 @@ export default async function VendasPage({
       : "";
 
   const anterior = intervaloDoMes(mesAnterior(mes));
-  const [linhas, linhasAnterior, metas] = await Promise.all([
+  const anoPassado = intervaloDoMes(`${Number(mes.slice(0, 4)) - 1}-${mes.slice(5, 7)}`);
+  const [linhas, linhasAnterior, linhasAnoPassado, metas] = await Promise.all([
     buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
     buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
+    buscarVendasPeriodo(supabase, anoPassado.inicio, anoPassado.fim, unidadeAtual || undefined),
     buscarMetas(supabase, mes),
   ]);
 
@@ -149,6 +152,12 @@ export default async function VendasPage({
     .filter((u) => porUnidade.has(u.id))
     .map((u) => ({ nome: u.nome, valor: porUnidade.get(u.id)! }))
     .sort((a, b) => b.valor - a.valor);
+
+  const faturamentoAnoPassado = linhasAnoPassado.reduce((soma, l) => soma + l.valor, 0);
+  const deltaAno =
+    faturamentoAnoPassado > 0
+      ? ((resumo.faturamento - faturamentoAnoPassado) / faturamentoAnoPassado) * 100
+      : null;
 
   // ---- meta do recorte (empresa ou unidade filtrada) e ritmo ----
   const metaAtual = unidadeAtual ? metaDaUnidade(metas, unidadeAtual) : metaDaEmpresa(metas);
@@ -170,6 +179,16 @@ export default async function VendasPage({
     if (unidadeAtual && m.unidade_id !== unidadeAtual) continue;
     metaPorVendedor.set(m.vendedor, (metaPorVendedor.get(m.vendedor) ?? 0) + m.valor);
   }
+  const leitura = gerarLeitura({
+    mes,
+    resumo,
+    delta: deltaFaturamento,
+    deltaAno,
+    agregados: { porDia, porDiaSemana, temHora, horas, celulas, maximoCelula, porUnidade },
+    unidades: unidadesComVenda,
+    meta: metaAtual && ritmo ? { valor: metaAtual.valor, ritmo } : null,
+  });
+
   const ranking = [...porVendedor.entries()]
     .map(([nome, v]) => ({ nome, ...v, meta: metaPorVendedor.get(nome) ?? null }))
     .sort((a, b) => b.valor - a.valor);
@@ -201,6 +220,11 @@ export default async function VendasPage({
           rotulo="Faturamento"
           valor={formatarMoeda(resumo.faturamento, resumo.faturamento >= 100_000)}
           deltaPct={deltaFaturamento}
+          detalhe={
+            deltaAno !== null
+              ? `${deltaAno >= 0 ? "+" : ""}${deltaAno.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% vs ano passado`
+              : undefined
+          }
         />
         <Kpi
           rotulo="Média por dia"
@@ -342,6 +366,32 @@ export default async function VendasPage({
           </Card>
         )}
       </div>
+
+      <Card className="mt-4">
+        <CardLabel>Insights do período</CardLabel>
+        <div className="mt-2 grid grid-cols-2 gap-6 max-[900px]:grid-cols-1">
+          <ul className="flex flex-col gap-2">
+            {leitura.destaques.map((d) => (
+              <li key={d} className="flex gap-2.5 text-sm">
+                <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-success" />
+                {d}
+              </li>
+            ))}
+          </ul>
+          <ul className="flex flex-col gap-2">
+            {leitura.atencao.length === 0 ? (
+              <li className="text-sm text-muted-3">Nenhum ponto de atenção neste período.</li>
+            ) : (
+              leitura.atencao.map((a) => (
+                <li key={a} className="flex gap-2.5 text-sm">
+                  <span aria-hidden className="mt-[7px] size-1.5 shrink-0 rounded-full bg-warning" />
+                  {a}
+                </li>
+              ))
+            )}
+          </ul>
+        </div>
+      </Card>
 
       {ranking.length > 0 && (
         <Card className="mt-4">

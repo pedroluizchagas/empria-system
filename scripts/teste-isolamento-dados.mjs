@@ -194,6 +194,41 @@ async function main() {
       Boolean(erroColab) || (importacaoColab?.length ?? 0) === 0,
     );
 
+    // ---- metas (Fase 2): mesma régua de isolamento ----
+    console.log("\nMetas (Fase 2):");
+    const { error: erroMeta } = await gerenteA.cliente.from("meta").insert({
+      empresa_id: A.empresaId,
+      ano_mes: "2026-06-01",
+      unidade_id: A.unidadeId,
+      vendedor: "Ana",
+      valor: 50000,
+    });
+    checar("gerente define meta de vendedor", !erroMeta);
+
+    const { data: metasB } = await gerenteB.cliente.from("meta").select("id");
+    checar("outra empresa NÃO vê as metas", (metasB?.length ?? 0) === 0);
+
+    const { data: metaInvasao, error: erroMetaInvasao } = await gerenteB.cliente
+      .from("meta")
+      .insert({ empresa_id: A.empresaId, ano_mes: "2026-06-01", valor: 1 })
+      .select();
+    checar(
+      "outra empresa NÃO define meta alheia",
+      Boolean(erroMetaInvasao) || (metaInvasao?.length ?? 0) === 0,
+    );
+
+    const { data: metasColab } = await colaboradorA.cliente.from("meta").select("valor");
+    checar("colaborador vê a meta (a própria régua)", (metasColab?.length ?? 0) === 1);
+
+    const { data: metaColab, error: erroMetaColab } = await colaboradorA.cliente
+      .from("meta")
+      .insert({ empresa_id: A.empresaId, ano_mes: "2026-07-01", valor: 10 })
+      .select();
+    checar(
+      "colaborador NÃO define metas",
+      Boolean(erroMetaColab) || (metaColab?.length ?? 0) === 0,
+    );
+
     // ---- desfazer de verdade, como gerente A ----
     console.log("\nDesfazer (gerente A):");
     const { error: erroDesfazerFatos } = await gerenteA.cliente

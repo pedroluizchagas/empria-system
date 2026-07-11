@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { formatarData, formatarMesAno, formatarMoeda, formatarNumero } from "@/lib/formato";
+import { formatarMesAno, formatarMoeda, formatarNumero } from "@/lib/formato";
+import { gerarLeitura } from "@/lib/insights";
+import { buscarMetas, calcularRitmo, metaDaEmpresa, metaDaUnidade } from "@/lib/metas";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
@@ -17,20 +19,6 @@ import {
 import { Apresentacao } from "./apresentacao";
 
 export const metadata: Metadata = { title: "Modo Reunião" };
-
-const DIAS_LONGOS = [
-  "domingo",
-  "segunda-feira",
-  "terça-feira",
-  "quarta-feira",
-  "quinta-feira",
-  "sexta-feira",
-  "sábado",
-];
-
-function pct(parte: number, todo: number): string {
-  return `${((parte / todo) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`;
-}
 
 export default async function ReuniaoPage({
   searchParams,
@@ -72,9 +60,13 @@ export default async function ReuniaoPage({
     params.unidade && unidades.some((u) => u.id === params.unidade) ? params.unidade : "";
 
   const anterior = intervaloDoMes(mesAnterior(mes));
-  const [linhas, linhasAnterior] = await Promise.all([
+  const mesAnoPassado = `${Number(mes.slice(0, 4)) - 1}-${mes.slice(5, 7)}`;
+  const anoPassado = intervaloDoMes(mesAnoPassado);
+  const [linhas, linhasAnterior, linhasAnoPassado, metas] = await Promise.all([
     buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
     buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
+    buscarVendasPeriodo(supabase, anoPassado.inicio, anoPassado.fim, unidadeAtual || undefined),
+    buscarMetas(supabase, mes),
   ]);
 
   if (linhas.length === 0) {
@@ -91,6 +83,14 @@ export default async function ReuniaoPage({
     delta === null
       ? null
       : `${delta >= 0 ? "+" : ""}${delta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% vs ${formatarMesAno(mesAnterior(mes))}`;
+
+  const faturamentoAnoPassado = linhasAnoPassado.reduce((soma, l) => soma + l.valor, 0);
+  const deltaAno =
+    faturamentoAnoPassado > 0
+      ? ((resumo.faturamento - faturamentoAnoPassado) / faturamentoAnoPassado) * 100
+      : null;
+  const metaAtual = unidadeAtual ? metaDaUnidade(metas, unidadeAtual) : metaDaEmpresa(metas);
+  const ritmo = metaAtual ? calcularRitmo(metaAtual.valor, resumo.faturamento, mes) : null;
 
   const agregados = agregarVendas(linhas, fim);
   const totalDias = Number(fim.slice(8, 10));
@@ -131,60 +131,27 @@ export default async function ReuniaoPage({
     });
   }
 
-  // ---- Leitura do mês por regras simples (insights completos são da Fase 2) ----
-  const destaques: string[] = [];
-  const atencao: string[] = [];
-
-  const melhorDiaIdx = agregados.porDia.indexOf(Math.max(...agregados.porDia));
-  if (agregados.porDia[melhorDiaIdx] > 0) {
-    const dataMelhor = `${mes}-${String(melhorDiaIdx + 1).padStart(2, "0")}`;
-    destaques.push(
-      `${formatarData(dataMelhor)} foi o melhor dia do mês, com ${formatarMoeda(agregados.porDia[melhorDiaIdx])}.`,
-    );
+  if (metaAtual && ritmo) {
+    // logo após o faturamento — a meta não pode ser cortada pelo limite de 4
+    kpis.splice(1, 0, {
+      rotulo: "Atingimento da meta",
+      valor: `${ritmo.atingidoPct.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`,
+      detalhe:
+        ritmo.porDia !== null
+          ? `meta ${formatarMoeda(metaAtual.valor, true)} · ${formatarMoeda(ritmo.porDia)}/dia até o fim do mês`
+          : `meta ${formatarMoeda(metaAtual.valor, true)}`,
+    });
   }
 
-  const somaSemana = agregados.porDiaSemana.reduce((a, b) => a + b, 0);
-  const melhorDow = agregados.porDiaSemana.indexOf(Math.max(...agregados.porDiaSemana));
-  if (somaSemana > 0) {
-    destaques.push(
-      `${DIAS_LONGOS[melhorDow].charAt(0).toUpperCase() + DIAS_LONGOS[melhorDow].slice(1)}s concentram ${pct(agregados.porDiaSemana[melhorDow], somaSemana)} da venda.`,
-    );
-  }
-
-  if (unidadesComVenda.length > 1) {
-    destaques.push(
-      `${unidadesComVenda[0].nome} lidera com ${pct(unidadesComVenda[0].valor, resumo.faturamento)} do faturamento.`,
-    );
-    const ultima = unidadesComVenda[unidadesComVenda.length - 1];
-    atencao.push(
-      `${ultima.nome} responde por ${pct(ultima.valor, resumo.faturamento)} do faturamento do período.`,
-    );
-  }
-
-  if (delta !== null && delta >= 0) {
-    destaques.push(
-      `Faturamento ${delta === 0 ? "estável" : `${delta.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% acima`} em relação a ${formatarMesAno(mesAnterior(mes))}.`,
-    );
-  }
-  if (delta !== null && delta < 0) {
-    atencao.push(
-      `Faturamento ${Math.abs(delta).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% abaixo de ${formatarMesAno(mesAnterior(mes))}.`,
-    );
-  }
-
-  // dias sem venda entre o primeiro e o último dia com venda no mês
-  const diasComVenda = agregados.porDia
-    .map((v, i) => (v > 0 ? i : -1))
-    .filter((i) => i !== -1);
-  if (diasComVenda.length > 1) {
-    const buraco =
-      diasComVenda[diasComVenda.length - 1] - diasComVenda[0] + 1 - diasComVenda.length;
-    if (buraco > 0) {
-      atencao.push(
-        `${buraco} ${buraco === 1 ? "dia sem venda registrada" : "dias sem venda registrada"} dentro do período — confira se falta planilha.`,
-      );
-    }
-  }
+  const { destaques, atencao } = gerarLeitura({
+    mes,
+    resumo,
+    delta,
+    deltaAno,
+    agregados,
+    unidades: unidadesComVenda,
+    meta: metaAtual && ritmo ? { valor: metaAtual.valor, ritmo } : null,
+  });
 
   const geradoEm = new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "long",

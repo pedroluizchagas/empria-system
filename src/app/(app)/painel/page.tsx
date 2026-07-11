@@ -6,9 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
-import type { Importacao, Unidade } from "@/lib/dominio";
-import { formatarData, formatarMesAno, formatarMoeda } from "@/lib/formato";
-import { buscarMetas, calcularRitmo, metaDaEmpresa, type Ritmo } from "@/lib/metas";
+import { formatarMesAno, formatarMoeda } from "@/lib/formato";
+import { buscarMetas, calcularRitmo, hojeSaoPaulo, metaDaEmpresa, type Ritmo } from "@/lib/metas";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
@@ -30,9 +29,8 @@ export default async function PainelPage() {
   let mesReferencia: string | null = null;
   let ritmo: Ritmo | null = null;
   let metaEmpresaValor: number | null = null;
-  let ultimasImportacoes: (Pick<Importacao, "id" | "criado_em" | "periodo_fim"> & {
-    unidade: Pick<Unidade, "nome"> | null;
-  })[] = [];
+  // saúde dos dados: última data coberta por unidade e há quantos dias
+  let saude: { nome: string; dias: number | null }[] = [];
 
   if (isSupabaseConfigurado()) {
     const supabase = await createClient();
@@ -41,24 +39,44 @@ export default async function PainelPage() {
       // mês de referência = o mais recente com dados
       mesReferencia = limites.ultima.slice(0, 7);
       const { inicio, fim } = intervaloDoMes(mesReferencia);
-      const [linhas, { data }, metas] = await Promise.all([
-        buscarVendasPeriodo(supabase, inicio, fim),
-        supabase
-          .from("importacao")
-          .select("id, criado_em, periodo_fim, unidade(nome)")
-          .eq("status", "concluida")
-          .order("criado_em", { ascending: false })
-          .limit(5),
-        buscarMetas(supabase, mesReferencia),
-      ]);
+      const [linhas, { data: dataImportacoes }, { data: dataUnidades }, metas] =
+        await Promise.all([
+          buscarVendasPeriodo(supabase, inicio, fim),
+          supabase
+            .from("importacao")
+            .select("unidade_id, periodo_fim")
+            .eq("status", "concluida")
+            .eq("tipo_dado", "vendas")
+            .order("periodo_fim", { ascending: false })
+            .limit(300),
+          supabase.from("unidade").select("id, nome").eq("ativa", true).order("nome"),
+          buscarMetas(supabase, mesReferencia),
+        ]);
       resumo = resumirVendas(linhas);
+
+      const ultimaPorUnidade = new Map<string, string>();
+      for (const imp of dataImportacoes ?? []) {
+        if (!imp.periodo_fim) continue;
+        const atual = ultimaPorUnidade.get(imp.unidade_id);
+        if (!atual || imp.periodo_fim > atual) ultimaPorUnidade.set(imp.unidade_id, imp.periodo_fim);
+      }
+      const hoje = new Date(`${hojeSaoPaulo()}T00:00:00Z`).getTime();
+      saude = (dataUnidades ?? [])
+        .map((u) => {
+          const ultima = ultimaPorUnidade.get(u.id);
+          return {
+            nome: u.nome,
+            dias: ultima
+              ? Math.max(0, Math.round((hoje - new Date(`${ultima}T00:00:00Z`).getTime()) / 86_400_000))
+              : null,
+          };
+        })
+        .sort((a, b) => (b.dias ?? 9999) - (a.dias ?? 9999));
       const metaEmpresa = metaDaEmpresa(metas);
       if (metaEmpresa) {
         metaEmpresaValor = metaEmpresa.valor;
         ritmo = calcularRitmo(metaEmpresa.valor, resumo.faturamento, mesReferencia);
       }
-      ultimasImportacoes =
-        (data as unknown as typeof ultimasImportacoes) ?? [];
     }
   }
 
@@ -161,16 +179,22 @@ export default async function PainelPage() {
           </Card>
           <Card>
             <CardLabel>Saúde dos dados</CardLabel>
-            {ultimasImportacoes.length === 0 ? (
-              <p className="text-sm text-muted-foreground">Nenhuma importação ativa.</p>
+            {saude.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma unidade ativa.</p>
             ) : (
               <ul className="flex flex-col gap-2 text-[13px] text-muted-foreground">
-                {ultimasImportacoes.map((imp) => (
-                  <li key={imp.id} className="flex items-center justify-between gap-2">
-                    <span className="truncate">{imp.unidade?.nome ?? "—"}</span>
-                    <Badge variant={imp.periodo_fim ? "ok" : "neutro"}>
-                      até {imp.periodo_fim ? formatarData(imp.periodo_fim) : "—"}
-                    </Badge>
+                {saude.map((u) => (
+                  <li key={u.nome} className="flex items-center justify-between gap-2">
+                    <span className="truncate">{u.nome}</span>
+                    {u.dias === null ? (
+                      <Badge variant="neutro">sem dados</Badge>
+                    ) : u.dias <= 3 ? (
+                      <Badge variant="ok">em dia</Badge>
+                    ) : u.dias <= 7 ? (
+                      <Badge variant="atencao">há {u.dias} dias</Badge>
+                    ) : (
+                      <Badge variant="erro">há {u.dias} dias</Badge>
+                    )}
                   </li>
                 ))}
               </ul>
