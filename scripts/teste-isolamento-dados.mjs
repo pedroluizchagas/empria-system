@@ -286,6 +286,29 @@ async function main() {
     const { data: comunicadosB } = await gerenteB.cliente.from("comunicado").select("id");
     checar("outra empresa NÃO vê o mural", (comunicadosB?.length ?? 0) === 0);
 
+    // ---- calendário de conteúdo (Fase 3) ----
+    console.log("\nCalendário de conteúdo (Fase 3):");
+    const { data: pautaCriada, error: erroPauta } = await gerenteA.cliente
+      .from("conteudo")
+      .insert({
+        empresa_id: A.empresaId,
+        titulo: "Reels teste",
+        responsavel_id: colaboradorA.id,
+      })
+      .select("id")
+      .single();
+    checar("gerente cria pauta", !erroPauta && Boolean(pautaCriada));
+
+    const { data: pautaMovida } = await colaboradorA.cliente
+      .from("conteudo")
+      .update({ status: "producao" })
+      .eq("id", pautaCriada.id)
+      .select("id");
+    checar("responsável move a própria pauta", (pautaMovida?.length ?? 0) === 1);
+
+    const { data: pautasB } = await gerenteB.cliente.from("conteudo").select("id");
+    checar("outra empresa NÃO vê a pauta", (pautasB?.length ?? 0) === 0);
+
     // ---- desfazer de verdade, como gerente A ----
     console.log("\nDesfazer (gerente A):");
     const { error: erroDesfazerFatos } = await gerenteA.cliente

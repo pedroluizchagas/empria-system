@@ -93,6 +93,35 @@ export interface EventoAgenda {
   criado_em: string;
 }
 
+export const CANAIS_CONTEUDO = [
+  "instagram",
+  "tiktok",
+  "whatsapp",
+  "facebook",
+  "email",
+  "outro",
+] as const;
+export type CanalConteudo = (typeof CANAIS_CONTEUDO)[number];
+
+export const ROTULO_CANAL: Record<CanalConteudo, string> = {
+  instagram: "Instagram",
+  tiktok: "TikTok",
+  whatsapp: "WhatsApp",
+  facebook: "Facebook",
+  email: "E-mail",
+  outro: "Outro",
+};
+
+export const STATUS_CONTEUDO = ["ideia", "producao", "aprovacao", "publicado"] as const;
+export type StatusConteudo = (typeof STATUS_CONTEUDO)[number];
+
+export const ROTULO_STATUS_CONTEUDO: Record<StatusConteudo, string> = {
+  ideia: "Ideia",
+  producao: "Produção",
+  aprovacao: "Aprovação",
+  publicado: "Publicado",
+};
+
 export const STATUS_IMPORTACAO = ["concluida", "desfeita"] as const;
 export type StatusImportacao = (typeof STATUS_IMPORTACAO)[number];
 

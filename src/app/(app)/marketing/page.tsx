@@ -6,9 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Tabela, Th, Td } from "@/components/ui/table";
+import { ROTULO_STATUS_CONTEUDO, STATUS_CONTEUDO } from "@/lib/dominio";
 import { formatarMesAno, formatarMoeda, formatarNumero } from "@/lib/formato";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
+import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
+import { CardPauta, NovaPauta, type Pauta } from "./conteudo";
 import { intervaloDoMes, mesesEntre } from "@/lib/vendas";
 import { FiltrosVendas } from "../vendas/filtros";
 
@@ -54,25 +57,73 @@ export default async function MarketingPage({
   }
 
   const supabase = await createClient();
-  const [{ data: primeira }, { data: ultima }] = await Promise.all([
-    supabase.from("fato_trafego").select("data").order("data").limit(1).maybeSingle(),
-    supabase
-      .from("fato_trafego")
-      .select("data")
-      .order("data", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
+  const contexto = await obterContexto();
+  const papel = contexto?.pessoa?.papel;
+  const editor = !!papel && ["proprietario", "gerente", "lider"].includes(papel);
+
+  const [{ data: primeira }, { data: ultima }, { data: dataConteudos }, { data: dataPessoas }] =
+    await Promise.all([
+      supabase.from("fato_trafego").select("data").order("data").limit(1).maybeSingle(),
+      supabase
+        .from("fato_trafego")
+        .select("data")
+        .order("data", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      supabase
+        .from("conteudo")
+        .select("id, titulo, canal, status, data_publicacao, responsavel:pessoa!conteudo_responsavel_id_fkey(nome)")
+        .order("data_publicacao", { ascending: true, nullsFirst: false })
+        .limit(200),
+      supabase.from("pessoa").select("id, nome").order("nome"),
+    ]);
+  const pautas = (dataConteudos as unknown as Pauta[]) ?? [];
+  const pessoas = dataPessoas ?? [];
+
+  const quadroConteudo = (
+    <section className="mt-8">
+      <h2 className="mb-3 font-display text-xl font-medium tracking-[-0.02em]">
+        Calendário de conteúdo
+      </h2>
+      {editor && (
+        <Card className="mb-4">
+          <CardLabel>Nova pauta</CardLabel>
+          <NovaPauta pessoas={pessoas} />
+        </Card>
+      )}
+      <div className="grid grid-cols-4 gap-4 max-[1000px]:grid-cols-2 max-[560px]:grid-cols-1">
+        {STATUS_CONTEUDO.map((status) => {
+          const coluna = pautas.filter((pt) => pt.status === status);
+          return (
+            <div key={status} className="rounded-card border border-border bg-surface-2/60 p-3">
+              <p className="mb-2 flex items-center justify-between text-[10px] font-medium uppercase tracking-[0.02em] text-muted-2">
+                {ROTULO_STATUS_CONTEUDO[status]}
+                <span>{coluna.length}</span>
+              </p>
+              <div className="flex flex-col gap-2">
+                {coluna.length === 0 ? (
+                  <p className="py-3 text-center text-[12px] text-muted-3">—</p>
+                ) : (
+                  coluna.map((pt) => <CardPauta key={pt.id} pauta={pt} editor={editor} />)
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
 
   if (!primeira || !ultima) {
     return (
       <>
         <PageHeader
           eyebrow="Marketing"
-          titulo="Tráfego pago"
-          descricao="Nenhum relatório de anúncios importado ainda."
+          titulo="Marketing"
+          descricao="Nenhum relatório de anúncios importado ainda — a pauta de conteúdo já funciona abaixo."
         />
         {vazio}
+        {quadroConteudo}
       </>
     );
   }
@@ -218,6 +269,8 @@ export default async function MarketingPage({
           </tbody>
         </Tabela>
       </Card>
+
+      {quadroConteudo}
     </>
   );
 }
