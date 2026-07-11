@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardLabel } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { formatarMoeda, formatarNumero } from "@/lib/formato";
+import { buscarMetas, calcularRitmo, metaDaEmpresa, metaDaUnidade } from "@/lib/metas";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import {
@@ -18,6 +19,7 @@ import {
   resumirVendas,
 } from "@/lib/vendas";
 import { cn } from "@/lib/utils";
+import { Tabela, Th, Td } from "@/components/ui/table";
 import { FiltrosVendas } from "./filtros";
 import {
   GraficoDiaSemana,
@@ -126,9 +128,10 @@ export default async function VendasPage({
       : "";
 
   const anterior = intervaloDoMes(mesAnterior(mes));
-  const [linhas, linhasAnterior] = await Promise.all([
+  const [linhas, linhasAnterior, metas] = await Promise.all([
     buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
     buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
+    buscarMetas(supabase, mes),
   ]);
 
   const resumo = resumirVendas(linhas);
@@ -145,6 +148,30 @@ export default async function VendasPage({
   const unidadesComVenda = unidades
     .filter((u) => porUnidade.has(u.id))
     .map((u) => ({ nome: u.nome, valor: porUnidade.get(u.id)! }))
+    .sort((a, b) => b.valor - a.valor);
+
+  // ---- meta do recorte (empresa ou unidade filtrada) e ritmo ----
+  const metaAtual = unidadeAtual ? metaDaUnidade(metas, unidadeAtual) : metaDaEmpresa(metas);
+  const ritmo = metaAtual ? calcularRitmo(metaAtual.valor, resumo.faturamento, mes) : null;
+
+  // ---- quem vende: ranking por vendedor (se a coluna existir) ----
+  const porVendedor = new Map<string, { valor: number; cupons: Set<string>; pecas: number; temQtde: boolean }>();
+  for (const linha of linhas) {
+    if (!linha.vendedor) continue;
+    const v = porVendedor.get(linha.vendedor) ?? { valor: 0, cupons: new Set<string>(), pecas: 0, temQtde: false };
+    v.valor += linha.valor;
+    if (linha.cupom) v.cupons.add(`${linha.data}|${linha.cupom}`);
+    if (linha.quantidade !== null) { v.pecas += linha.quantidade; v.temQtde = true; }
+    porVendedor.set(linha.vendedor, v);
+  }
+  const metaPorVendedor = new Map<string, number>();
+  for (const m of metas) {
+    if (!m.vendedor) continue;
+    if (unidadeAtual && m.unidade_id !== unidadeAtual) continue;
+    metaPorVendedor.set(m.vendedor, (metaPorVendedor.get(m.vendedor) ?? 0) + m.valor);
+  }
+  const ranking = [...porVendedor.entries()]
+    .map(([nome, v]) => ({ nome, ...v, meta: metaPorVendedor.get(nome) ?? null }))
     .sort((a, b) => b.valor - a.valor);
 
   return (
@@ -212,6 +239,57 @@ export default async function VendasPage({
         )}
       </div>
 
+      <Card className="mt-4 p-5">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <CardLabel className="mb-0">
+            Meta {unidadeAtual ? "da unidade" : "da empresa"}
+          </CardLabel>
+          <Link
+            href="/vendas/metas"
+            className="text-[12px] text-primary underline-offset-2 hover:underline"
+          >
+            definir metas
+          </Link>
+        </div>
+        {metaAtual && ritmo ? (
+          <div className="mt-2">
+            <div className="flex flex-wrap items-baseline justify-between gap-2">
+              <p className="text-sm">
+                <strong className="font-display text-xl font-medium tracking-[-0.02em]">
+                  {formatarMoeda(resumo.faturamento, true)}
+                </strong>{" "}
+                <span className="text-muted-foreground">
+                  de {formatarMoeda(metaAtual.valor, true)} ·{" "}
+                  {ritmo.atingidoPct.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%
+                </span>
+              </p>
+              <p className="text-[13px] text-muted-foreground">
+                {ritmo.porDia !== null
+                  ? `para bater a meta: ${formatarMoeda(ritmo.porDia)}/dia até o fim do mês`
+                  : ritmo.falta === 0
+                    ? "meta batida 🎯"
+                    : ritmo.diasRestantes === 0
+                      ? `faltaram ${formatarMoeda(ritmo.falta)}`
+                      : ""}
+              </p>
+            </div>
+            <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-2">
+              <div
+                className={cn(
+                  "h-full rounded-full",
+                  ritmo.atingidoPct >= 100 ? "bg-success" : "bg-primary",
+                )}
+                style={{ width: `${Math.min(100, ritmo.atingidoPct)}%` }}
+              />
+            </div>
+          </div>
+        ) : (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Sem meta definida para este recorte — defina em Metas para acompanhar o ritmo diário.
+          </p>
+        )}
+      </Card>
+
       <div className="mt-4 grid grid-cols-2 gap-4 max-[1000px]:grid-cols-1">
         <Card className="col-span-2 max-[1000px]:col-span-1">
           <CardLabel>Quando se vende</CardLabel>
@@ -264,6 +342,75 @@ export default async function VendasPage({
           </Card>
         )}
       </div>
+
+      {ranking.length > 0 && (
+        <Card className="mt-4">
+          <CardLabel>Quem vende</CardLabel>
+          <h3 className="mb-3 font-display text-lg font-medium tracking-[-0.02em]">
+            Ranking de vendedores
+          </h3>
+          <Tabela>
+            <thead>
+              <tr>
+                <Th>#</Th>
+                <Th>Vendedor(a)</Th>
+                <Th className="text-right">Faturamento</Th>
+                <Th className="text-right">Particip.</Th>
+                <Th className="text-right">Ticket médio</Th>
+                <Th className="text-right">PA</Th>
+                <Th className="text-right">Meta</Th>
+                <Th>Atingimento</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {ranking.map((v, i) => {
+                const ticket = v.cupons.size > 0 ? v.valor / v.cupons.size : null;
+                const pa = v.cupons.size > 0 && v.temQtde ? v.pecas / v.cupons.size : null;
+                const atingido = v.meta ? (v.valor / v.meta) * 100 : null;
+                return (
+                  <tr key={v.nome}>
+                    <Td className="text-muted-3">{i + 1}</Td>
+                    <Td className="font-medium">{v.nome}</Td>
+                    <Td className="text-right tabular-nums">{formatarMoeda(v.valor)}</Td>
+                    <Td className="text-right tabular-nums text-muted-foreground">
+                      {((v.valor / resumo.faturamento) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%
+                    </Td>
+                    <Td className="text-right tabular-nums">
+                      {ticket !== null ? formatarMoeda(ticket) : "—"}
+                    </Td>
+                    <Td className="text-right tabular-nums">
+                      {pa !== null ? pa.toLocaleString("pt-BR", { maximumFractionDigits: 2 }) : "—"}
+                    </Td>
+                    <Td className="text-right tabular-nums">
+                      {v.meta !== null ? formatarMoeda(v.meta, true) : "—"}
+                    </Td>
+                    <Td className="min-w-36">
+                      {atingido !== null ? (
+                        <span className="flex items-center gap-2">
+                          <span className="h-1.5 w-20 overflow-hidden rounded-full bg-surface-2">
+                            <span
+                              className={cn(
+                                "block h-full rounded-full",
+                                atingido >= 100 ? "bg-success" : "bg-primary",
+                              )}
+                              style={{ width: `${Math.min(100, atingido)}%` }}
+                            />
+                          </span>
+                          <span className="text-[12px] tabular-nums text-muted-foreground">
+                            {atingido.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%
+                          </span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-3">—</span>
+                      )}
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Tabela>
+        </Card>
+      )}
     </>
   );
 }

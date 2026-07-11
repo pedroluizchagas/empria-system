@@ -9,11 +9,13 @@ export function FiltrosVendas({
   mesAtual,
   unidades,
   unidadeAtual,
+  base = "/vendas",
 }: {
   meses: string[]; // "2026-07", mais recente primeiro
   mesAtual: string;
   unidades: { id: string; nome: string }[];
   unidadeAtual: string; // "" = todas
+  base?: string;
 }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -22,7 +24,7 @@ export function FiltrosVendas({
     const novos = new URLSearchParams(params.toString());
     if (valor) novos.set(chave, valor);
     else novos.delete(chave);
-    router.push(`/vendas?${novos.toString()}`);
+    router.push(`${base}?${novos.toString()}`);
   }
 
   return (

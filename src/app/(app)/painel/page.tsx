@@ -8,6 +8,7 @@ import { Card, CardLabel } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import type { Importacao, Unidade } from "@/lib/dominio";
 import { formatarData, formatarMesAno, formatarMoeda } from "@/lib/formato";
+import { buscarMetas, calcularRitmo, metaDaEmpresa, type Ritmo } from "@/lib/metas";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
@@ -27,6 +28,8 @@ export default async function PainelPage() {
 
   let resumo: ResumoVendas | null = null;
   let mesReferencia: string | null = null;
+  let ritmo: Ritmo | null = null;
+  let metaEmpresaValor: number | null = null;
   let ultimasImportacoes: (Pick<Importacao, "id" | "criado_em" | "periodo_fim"> & {
     unidade: Pick<Unidade, "nome"> | null;
   })[] = [];
@@ -38,7 +41,7 @@ export default async function PainelPage() {
       // mês de referência = o mais recente com dados
       mesReferencia = limites.ultima.slice(0, 7);
       const { inicio, fim } = intervaloDoMes(mesReferencia);
-      const [linhas, { data }] = await Promise.all([
+      const [linhas, { data }, metas] = await Promise.all([
         buscarVendasPeriodo(supabase, inicio, fim),
         supabase
           .from("importacao")
@@ -46,8 +49,14 @@ export default async function PainelPage() {
           .eq("status", "concluida")
           .order("criado_em", { ascending: false })
           .limit(5),
+        buscarMetas(supabase, mesReferencia),
       ]);
       resumo = resumirVendas(linhas);
+      const metaEmpresa = metaDaEmpresa(metas);
+      if (metaEmpresa) {
+        metaEmpresaValor = metaEmpresa.valor;
+        ritmo = calcularRitmo(metaEmpresa.valor, resumo.faturamento, mesReferencia);
+      }
       ultimasImportacoes =
         (data as unknown as typeof ultimasImportacoes) ?? [];
     }
@@ -84,8 +93,18 @@ export default async function PainelPage() {
     },
     {
       rotulo: "Atingimento da meta",
-      valor: null,
-      nota: "defina metas na Fase 2",
+      valor: ritmo
+        ? `${ritmo.atingidoPct.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}%`
+        : null,
+      nota: ritmo
+        ? ritmo.porDia !== null
+          ? `para bater ${formatarMoeda(metaEmpresaValor!, true)}: ${formatarMoeda(ritmo.porDia)}/dia até o fim do mês`
+          : ritmo.falta === 0
+            ? "meta batida 🎯"
+            : `faltaram ${formatarMoeda(ritmo.falta)}`
+        : resumo
+          ? "defina metas em Vendas → Metas"
+          : "aguardando dados",
     },
   ];
 
