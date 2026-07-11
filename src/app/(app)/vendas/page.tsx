@@ -130,12 +130,23 @@ export default async function VendasPage({
 
   const anterior = intervaloDoMes(mesAnterior(mes));
   const anoPassado = intervaloDoMes(`${Number(mes.slice(0, 4)) - 1}-${mes.slice(5, 7)}`);
-  const [linhas, linhasAnterior, linhasAnoPassado, metas] = await Promise.all([
-    buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
-    buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
-    buscarVendasPeriodo(supabase, anoPassado.inicio, anoPassado.fim, unidadeAtual || undefined),
-    buscarMetas(supabase, mes),
-  ]);
+  let consultaEventos = supabase
+    .from("evento_agenda")
+    .select("titulo, tipo, inicio, fim")
+    .lte("inicio", fim)
+    .or(`fim.gte.${inicio},inicio.gte.${inicio}`);
+  if (unidadeAtual) {
+    consultaEventos = consultaEventos.or(`unidade_id.is.null,unidade_id.eq.${unidadeAtual}`);
+  }
+  const [linhas, linhasAnterior, linhasAnoPassado, metas, { data: dataEventos }] =
+    await Promise.all([
+      buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
+      buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
+      buscarVendasPeriodo(supabase, anoPassado.inicio, anoPassado.fim, unidadeAtual || undefined),
+      buscarMetas(supabase, mes),
+      consultaEventos,
+    ]);
+  const eventos = dataEventos ?? [];
 
   const resumo = resumirVendas(linhas);
   const resumoAnterior = resumirVendas(linhasAnterior);
@@ -179,6 +190,18 @@ export default async function VendasPage({
     if (unidadeAtual && m.unidade_id !== unidadeAtual) continue;
     metaPorVendedor.set(m.vendedor, (metaPorVendedor.get(m.vendedor) ?? 0) + m.valor);
   }
+  // eventos da agenda recortados para os dias do mês exibido
+  const faixasEventos: { nome: string; de: number; ate: number }[] = [];
+  const marcosEventos: { nome: string; dia: number }[] = [];
+  for (const ev of eventos) {
+    const de = ev.inicio < inicio ? 1 : Number(ev.inicio.slice(8, 10));
+    const fimEv = ev.fim ?? ev.inicio;
+    const ate = fimEv > fim ? totalDias : Number(fimEv.slice(8, 10));
+    if (ate < de) continue;
+    if (de === ate) marcosEventos.push({ nome: ev.titulo, dia: de });
+    else faixasEventos.push({ nome: ev.titulo, de, ate });
+  }
+
   const leitura = gerarLeitura({
     mes,
     resumo,
@@ -323,6 +346,8 @@ export default async function VendasPage({
           <GraficoVendaPorDia
             dias={Array.from({ length: totalDias }, (_, i) => String(i + 1).padStart(2, "0"))}
             valores={porDia.map((v) => Math.round(v * 100) / 100)}
+            faixas={faixasEventos}
+            marcos={marcosEventos}
           />
         </Card>
 

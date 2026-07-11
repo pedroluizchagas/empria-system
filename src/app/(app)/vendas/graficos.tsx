@@ -29,14 +29,20 @@ const dicaMoeda = {
 export function GraficoVendaPorDia({
   dias,
   valores,
+  faixas = [],
+  marcos = [],
 }: {
   dias: string[]; // "01", "02"…
   valores: number[];
+  /** Eventos com duração (campanha, liquidação…) — dias 1-based no mês. */
+  faixas?: { nome: string; de: number; ate: number }[];
+  /** Eventos de um dia (feriado, inventário…). */
+  marcos?: { nome: string; dia: number }[];
 }) {
   return (
     <Grafico
       opcao={{
-        grid: { left: 48, right: 8, top: 16, bottom: 24 },
+        grid: { left: 48, right: 8, top: 28, bottom: 24 },
         tooltip: dicaMoeda,
         xAxis: {
           type: "category",
@@ -53,6 +59,33 @@ export function GraficoVendaPorDia({
             itemStyle: { color: TEMA_GRAFICO.primaria, borderRadius: [2, 2, 0, 0] },
             barMaxWidth: 18,
             name: "Venda",
+            // a linha do tempo única: eventos da agenda sobre o gráfico
+            markArea: {
+              silent: true,
+              itemStyle: { color: "rgba(10, 62, 255, 0.07)" },
+              label: {
+                show: true,
+                position: "insideTop",
+                color: TEMA_GRAFICO.profundo,
+                fontSize: 10,
+              },
+              data: faixas.map((f) => [
+                { name: f.nome, xAxis: f.de - 1 },
+                { xAxis: f.ate - 1 },
+              ]),
+            },
+            markLine: {
+              silent: true,
+              symbol: "none",
+              lineStyle: { color: TEMA_GRAFICO.textoFraco, type: "dashed" },
+              label: {
+                position: "insideEndTop",
+                color: TEMA_GRAFICO.texto,
+                fontSize: 10,
+                formatter: (p: { name: string }) => p.name,
+              },
+              data: marcos.map((m) => ({ name: m.nome, xAxis: m.dia - 1 })),
+            },
           },
         ],
       }}

@@ -57,6 +57,42 @@ export const FASE_TIPO_DADO: Record<TipoDado, number> = {
   metas: 2,
 };
 
+export const TIPOS_EVENTO = [
+  "campanha",
+  "liquidacao",
+  "troca_colecao",
+  "inventario",
+  "reuniao",
+  "treinamento",
+  "feriado",
+  "outro",
+] as const;
+export type TipoEvento = (typeof TIPOS_EVENTO)[number];
+
+export const ROTULO_TIPO_EVENTO: Record<TipoEvento, string> = {
+  campanha: "Campanha",
+  liquidacao: "Liquidação",
+  troca_colecao: "Troca de coleção",
+  inventario: "Inventário",
+  reuniao: "Reunião",
+  treinamento: "Treinamento",
+  feriado: "Feriado",
+  outro: "Outro",
+};
+
+export interface EventoAgenda {
+  id: string;
+  empresa_id: string;
+  tipo: TipoEvento;
+  titulo: string;
+  descricao: string | null;
+  inicio: string;
+  fim: string | null;
+  unidade_id: string | null;
+  investimento: number | null;
+  criado_em: string;
+}
+
 export const STATUS_IMPORTACAO = ["concluida", "desfeita"] as const;
 export type StatusImportacao = (typeof STATUS_IMPORTACAO)[number];
 
