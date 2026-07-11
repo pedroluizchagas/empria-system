@@ -1,26 +1,80 @@
 @import "tailwindcss";
 
+/* Tokens do design system — fonte da verdade: DESIGN.md */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f8f8f8;
+  --surface: #ffffff;
+  --surface-2: #f4f4f4;
+  --border: #e2e2e2;
+  --foreground: #202020;
+  --muted-foreground: #5f5f5f;
+  --muted-2: #878787;
+  --muted-3: #999999;
+  --muted-4: #b5b5b5;
+  --muted-5: #d3d3d3;
+
+  --primary: #0a3eff;
+  --primary-hover: #0935d6;
+  --primary-foreground: #ffffff;
+  --accent-cyan: #0099ff;
+  --primary-tint: #6f9dff;
+  --deep: #10296e;
+  --overlay-deep: #10296e91;
+
+  --destructive: #e64059;
+  --success: #0ba05f;
+  --warning: #e6a03c;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-card: var(--surface);
+  --color-border: var(--border);
+  --color-input: var(--border);
+  --color-ring: var(--primary);
+  --color-muted: var(--surface-2);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted-2: var(--muted-2);
+  --color-muted-3: var(--muted-3);
+  --color-muted-4: var(--muted-4);
+  --color-muted-5: var(--muted-5);
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent-cyan: var(--accent-cyan);
+  --color-primary-tint: var(--primary-tint);
+  --color-deep: var(--deep);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --radius-control: 2px;
+  --radius-card: 11px;
+
+  --font-sans: var(--font-inter), -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-switzer), var(--font-inter), -apple-system, "Segoe UI", sans-serif;
+
+  --shadow-float: 0 0.6px 1.6px rgb(0 0 0 / 0.05), 0 2.3px 6px rgb(0 0 0 / 0.08), 0 10px 24px rgb(0 0 0 / 0.1);
+
+  --tracking-display: -0.03em;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  letter-spacing: -0.01em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--primary-tint);
+  color: var(--foreground);
 }
