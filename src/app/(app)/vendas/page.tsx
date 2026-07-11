@@ -20,6 +20,7 @@ import {
   resumirVendas,
 } from "@/lib/vendas";
 import { cn } from "@/lib/utils";
+import { datasDoVarejoNoPeriodo } from "@/lib/varejo";
 import { Tabela, Th, Td } from "@/components/ui/table";
 import { FiltrosVendas } from "./filtros";
 import {
@@ -200,6 +201,13 @@ export default async function VendasPage({
     if (ate < de) continue;
     if (de === ate) marcosEventos.push({ nome: ev.titulo, dia: de });
     else faixasEventos.push({ nome: ev.titulo, de, ate });
+  }
+  // datas do varejo pré-carregadas (sem duplicar dia já marcado por evento)
+  for (const dv of datasDoVarejoNoPeriodo(inicio, fim)) {
+    const dia = Number(dv.data.slice(8, 10));
+    if (!marcosEventos.some((m) => m.dia === dia)) {
+      marcosEventos.push({ nome: dv.nome, dia });
+    }
   }
 
   const leitura = gerarLeitura({

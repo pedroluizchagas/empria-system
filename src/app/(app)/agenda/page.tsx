@@ -11,10 +11,22 @@ import {
   type Unidade,
 } from "@/lib/dominio";
 import { formatarData, formatarMoeda } from "@/lib/formato";
+import { hojeSaoPaulo } from "@/lib/metas";
+import { datasDoVarejoNoPeriodo } from "@/lib/varejo";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
 import { NovoEvento, ExcluirEvento } from "./novo-evento";
+import { NovaTarefa, TarefaCheck, ExcluirTarefa } from "./tarefas";
+
+interface Tarefa {
+  id: string;
+  titulo: string;
+  prazo: string | null;
+  status: "aberta" | "concluida";
+  responsavel: { nome: string } | null;
+  unidade: { nome: string } | null;
+}
 
 export const metadata: Metadata = { title: "Agenda" };
 
@@ -37,17 +49,30 @@ export default async function AgendaPage() {
   const editor = !!papel && ["proprietario", "gerente", "lider"].includes(papel);
 
   const supabase = await createClient();
-  const [{ data: dataEventos }, { data: dataUnidades }] = await Promise.all([
-    supabase
-      .from("evento_agenda")
-      .select("*, unidade(nome)")
-      .order("inicio", { ascending: false })
-      .limit(100),
-    supabase.from("unidade").select("id, nome").eq("ativa", true).order("nome"),
-  ]);
+  const [{ data: dataEventos }, { data: dataUnidades }, { data: dataTarefas }, { data: dataPessoas }] =
+    await Promise.all([
+      supabase
+        .from("evento_agenda")
+        .select("*, unidade(nome)")
+        .order("inicio", { ascending: false })
+        .limit(100),
+      supabase.from("unidade").select("id, nome").eq("ativa", true).order("nome"),
+      supabase
+        .from("tarefa")
+        .select("id, titulo, prazo, status, responsavel:pessoa!tarefa_responsavel_id_fkey(nome), unidade(nome)")
+        .order("status")
+        .order("prazo", { ascending: true, nullsFirst: false })
+        .limit(100),
+      supabase.from("pessoa").select("id, nome").order("nome"),
+    ]);
   const eventos =
     (dataEventos as (EventoAgenda & { unidade: Pick<Unidade, "nome"> | null })[]) ?? [];
   const unidades = dataUnidades ?? [];
+  const tarefas = (dataTarefas as unknown as Tarefa[]) ?? [];
+  const pessoas = dataPessoas ?? [];
+  const hoje = hojeSaoPaulo();
+  const fimJanela = `${Number(hoje.slice(0, 4))}-12-31`;
+  const datasVarejo = datasDoVarejoNoPeriodo(hoje, fimJanela).slice(0, 4);
 
   return (
     <>
@@ -56,6 +81,17 @@ export default async function AgendaPage() {
         titulo="Agenda central"
         descricao="Campanhas, liquidações, troca de coleção, inventários e feriados — sobrepostos aos gráficos de venda."
       />
+
+      <Card className="mb-4">
+        <CardLabel>Próximas datas do varejo (pré-carregadas)</CardLabel>
+        <div className="mt-1 flex flex-wrap gap-2">
+          {datasVarejo.map((d) => (
+            <Badge key={d.data} variant="info">
+              {d.nome} · {formatarData(d.data)}
+            </Badge>
+          ))}
+        </div>
+      </Card>
 
       {editor && (
         <Card className="mb-4">
@@ -109,6 +145,71 @@ export default async function AgendaPage() {
           </tbody>
         </Tabela>
       )}
+
+      <section className="mt-8">
+        <h2 className="mb-3 font-display text-xl font-medium tracking-[-0.02em]">
+          Tarefas
+        </h2>
+        {editor && (
+          <Card className="mb-4">
+            <CardLabel>Delegar</CardLabel>
+            <NovaTarefa pessoas={pessoas} unidades={unidades} />
+          </Card>
+        )}
+        {tarefas.length === 0 ? (
+          <Card>
+            <p className="text-sm text-muted-foreground">
+              Nenhuma tarefa — delegue a primeira e acompanhe sem sair do sistema.
+            </p>
+          </Card>
+        ) : (
+          <Tabela>
+            <thead>
+              <tr>
+                <Th />
+                <Th>Tarefa</Th>
+                <Th>Responsável</Th>
+                <Th>Unidade</Th>
+                <Th>Prazo</Th>
+                {editor && <Th />}
+              </tr>
+            </thead>
+            <tbody>
+              {tarefas.map((t) => {
+                const atrasada = t.status === "aberta" && t.prazo !== null && t.prazo < hoje;
+                return (
+                  <tr key={t.id} className={t.status === "concluida" ? "opacity-55" : ""}>
+                    <Td className="w-10">
+                      <TarefaCheck tarefaId={t.id} concluida={t.status === "concluida"} />
+                    </Td>
+                    <Td className={`font-medium ${t.status === "concluida" ? "line-through" : ""}`}>
+                      {t.titulo}
+                    </Td>
+                    <Td>{t.responsavel?.nome ?? "—"}</Td>
+                    <Td>{t.unidade?.nome ?? "Empresa toda"}</Td>
+                    <Td className="whitespace-nowrap">
+                      {t.prazo ? (
+                        atrasada ? (
+                          <Badge variant="erro">venceu {formatarData(t.prazo)}</Badge>
+                        ) : (
+                          formatarData(t.prazo)
+                        )
+                      ) : (
+                        "—"
+                      )}
+                    </Td>
+                    {editor && (
+                      <Td className="text-right">
+                        <ExcluirTarefa tarefaId={t.id} />
+                      </Td>
+                    )}
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Tabela>
+        )}
+      </section>
     </>
   );
 }

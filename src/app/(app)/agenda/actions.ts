@@ -77,3 +77,75 @@ export async function excluirEvento(eventoId: string): Promise<void> {
   revalidatePath("/agenda");
   revalidatePath("/vendas");
 }
+
+// ---------- Tarefas ----------
+
+export async function criarTarefa(
+  _anterior: EstadoAcao,
+  formData: FormData,
+): Promise<EstadoAcao> {
+  const contexto = await exigirEditor();
+  if (!contexto?.pessoa) {
+    return { ok: false, erro: "Apenas proprietário, gerente ou líder criam tarefas." };
+  }
+
+  const titulo = String(formData.get("titulo") ?? "").trim();
+  const responsavelId = String(formData.get("responsavel_id") ?? "");
+  const unidadeId = String(formData.get("unidade_id") ?? "");
+  const prazo = String(formData.get("prazo") ?? "");
+
+  if (titulo.length < 2) return { ok: false, erro: "Descreva a tarefa." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("tarefa").insert({
+    empresa_id: contexto.pessoa.empresa_id,
+    titulo,
+    responsavel_id: responsavelId || null,
+    unidade_id: unidadeId || null,
+    prazo: prazo || null,
+    criado_por: contexto.pessoa.id,
+  });
+  if (error) return { ok: false, erro: "Não foi possível criar a tarefa." };
+
+  revalidatePath("/agenda");
+  return { ok: true, erro: null };
+}
+
+export async function alternarTarefa(
+  tarefaId: string,
+  concluida: boolean,
+): Promise<{ ok: boolean; erro: string | null }> {
+  const contexto = await obterContexto();
+  if (!contexto?.pessoa) return { ok: false, erro: "Sessão expirada." };
+
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("tarefa")
+    .update({
+      status: concluida ? "concluida" : "aberta",
+      concluida_em: concluida ? new Date().toISOString() : null,
+    })
+    .eq("id", tarefaId)
+    .eq("empresa_id", contexto.pessoa.empresa_id)
+    .select("id");
+
+  // RLS: só gestor/líder ou o responsável — 0 linhas = sem permissão
+  if (!data || data.length === 0) {
+    return { ok: false, erro: "Só o responsável (ou quem gerencia) conclui esta tarefa." };
+  }
+  revalidatePath("/agenda");
+  return { ok: true, erro: null };
+}
+
+export async function excluirTarefa(tarefaId: string): Promise<void> {
+  const contexto = await exigirEditor();
+  if (!contexto?.pessoa) return;
+
+  const supabase = await createClient();
+  await supabase
+    .from("tarefa")
+    .delete()
+    .eq("id", tarefaId)
+    .eq("empresa_id", contexto.pessoa.empresa_id);
+  revalidatePath("/agenda");
+}
