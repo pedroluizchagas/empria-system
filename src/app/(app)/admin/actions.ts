@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { PAPEIS, TIPOS_UNIDADE, type Papel, type TipoUnidade } from "@/lib/dominio";
 import { createAdminClient, isServiceRoleConfigurado } from "@/lib/supabase/admin";
-import { ehGestor, obterContexto, type Contexto } from "@/lib/supabase/contexto";
+import { exigirGestor } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
 
 export interface EstadoAcao {
@@ -18,12 +18,6 @@ const SEM_PERMISSAO: EstadoAcao = {
   ok: false,
   erro: "Apenas proprietário ou gerente podem fazer isso.",
 };
-
-async function exigirGestor(): Promise<Contexto | null> {
-  const contexto = await obterContexto();
-  if (!contexto?.pessoa || !ehGestor(contexto.pessoa)) return null;
-  return contexto;
-}
 
 // ---------- Unidades ----------
 

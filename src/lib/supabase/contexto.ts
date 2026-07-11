@@ -15,6 +15,13 @@ export function ehGestor(pessoa: Pessoa | null): boolean {
   return pessoa?.papel === "proprietario" || pessoa?.papel === "gerente";
 }
 
+/** Contexto apenas quando quem chama é proprietário/gerente; null caso contrário. */
+export async function exigirGestor(): Promise<Contexto | null> {
+  const contexto = await obterContexto();
+  if (!contexto?.pessoa || !ehGestor(contexto.pessoa)) return null;
+  return contexto;
+}
+
 /** Usuário + vínculo com empresa, memoizado por request. null = não autenticado. */
 export const obterContexto = cache(async (): Promise<Contexto | null> => {
   if (!isSupabaseConfigurado()) return null;
