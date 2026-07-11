@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import type { TipoDado } from "@/lib/dominio";
-import { CAMPOS_ESTOQUE, CAMPOS_TRAFEGO, CAMPOS_VENDA } from "@/lib/importacao/campos";
+import { CAMPOS_ECOMMERCE, CAMPOS_ESTOQUE, CAMPOS_TRAFEGO, CAMPOS_VENDA } from "@/lib/importacao/campos";
 import type { Celula } from "@/lib/importacao/planilha";
-import { validarEstoque, validarTrafego, validarVendas } from "@/lib/importacao/validar";
+import { validarEcommerce, validarEstoque, validarTrafego, validarVendas } from "@/lib/importacao/validar";
 import { hojeSaoPaulo } from "@/lib/metas";
 import { exigirGestor, type Contexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
@@ -84,6 +84,7 @@ export async function confirmarImportacao(
     vendas: CAMPOS_VENDA,
     trafego: CAMPOS_TRAFEGO,
     estoque: CAMPOS_ESTOQUE,
+    ecommerce: CAMPOS_ECOMMERCE,
   };
   const campos = camposValidos[entrada.tipoDado];
   if (!campos) {
@@ -110,15 +111,20 @@ export async function confirmarImportacao(
     mapeamento[campo] = i;
   });
   const linhasCruas = entrada.linhas.map((l) => ({ numero: l.n, celulas: l.c }));
-  const resultado =
-    entrada.tipoDado === "trafego"
-      ? validarTrafego(linhasCruas, mapeamento)
-      : entrada.tipoDado === "estoque"
-        ? validarEstoque(linhasCruas, mapeamento)
-        : validarVendas(linhasCruas, mapeamento);
-  const tabelaFato = { vendas: "fato_venda", trafego: "fato_trafego", estoque: "fato_estoque" }[
-    entrada.tipoDado as "vendas" | "trafego" | "estoque"
-  ];
+  const validadores = {
+    vendas: validarVendas,
+    trafego: validarTrafego,
+    estoque: validarEstoque,
+    ecommerce: validarEcommerce,
+  } as const;
+  const tipo = entrada.tipoDado as keyof typeof validadores;
+  const resultado = validadores[tipo](linhasCruas, mapeamento);
+  const tabelaFato = {
+    vendas: "fato_venda",
+    trafego: "fato_trafego",
+    estoque: "fato_estoque",
+    ecommerce: "fato_ecommerce",
+  }[tipo];
 
   if (resultado.aceitas.length === 0) {
     return { ok: false, erro: "Nenhuma linha válida para importar." };
@@ -242,7 +248,7 @@ async function desfazerInterno(
   if (!importacao) return "Importação não encontrada.";
   if (importacao.status === "desfeita") return "Essa importação já foi desfeita.";
 
-  for (const tabela of ["fato_venda", "fato_trafego", "fato_estoque"]) {
+  for (const tabela of ["fato_venda", "fato_trafego", "fato_estoque", "fato_ecommerce"]) {
     const { error: erroFatos } = await supabase
       .from(tabela)
       .delete()

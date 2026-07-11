@@ -132,7 +132,7 @@ export default async function MarketingPage({
   const mes = params.mes && meses.includes(params.mes) ? params.mes : meses[0];
   const { inicio, fim } = intervaloDoMes(mes);
 
-  const [{ data: dataTrafego }, { data: dataVendas }] = await Promise.all([
+  const [{ data: dataTrafego }, { data: dataVendas }, { data: dataEcommerce }] = await Promise.all([
     supabase
       .from("fato_trafego")
       .select("data, campanha, investimento, cliques, impressoes, conversoes, receita")
@@ -145,6 +145,12 @@ export default async function MarketingPage({
       .gte("data", inicio)
       .lte("data", fim)
       .limit(50000),
+    supabase
+      .from("fato_ecommerce")
+      .select("receita, sessoes, pedidos, frete, devolucoes")
+      .gte("data", inicio)
+      .lte("data", fim)
+      .limit(10000),
   ]);
   const linhas = (dataTrafego as LinhaTrafego[]) ?? [];
   const faturamento = (dataVendas ?? []).reduce((soma, v) => soma + v.valor, 0);
@@ -173,6 +179,56 @@ export default async function MarketingPage({
   const campanhas = [...porCampanha.entries()]
     .map(([nome, c]) => ({ nome, ...c }))
     .sort((a, b) => b.investimento - a.investimento);
+
+  // e-commerce do mesmo mês (funil junto com o tráfego — ESCOPO §5.6)
+  let ecomReceita = 0;
+  let ecomSessoes = 0, temSessoes = false;
+  let ecomPedidos = 0, temPedidos = false;
+  let ecomFrete = 0, temFrete = false;
+  let ecomDevolucoes = 0, temDevolucoes = false;
+  for (const e of dataEcommerce ?? []) {
+    ecomReceita += e.receita;
+    if (e.sessoes !== null) { ecomSessoes += e.sessoes; temSessoes = true; }
+    if (e.pedidos !== null) { ecomPedidos += e.pedidos; temPedidos = true; }
+    if (e.frete !== null) { ecomFrete += e.frete; temFrete = true; }
+    if (e.devolucoes !== null) { ecomDevolucoes += e.devolucoes; temDevolucoes = true; }
+  }
+  const temEcommerce = (dataEcommerce?.length ?? 0) > 0;
+  const conversao = temSessoes && temPedidos && ecomSessoes > 0 ? (ecomPedidos / ecomSessoes) * 100 : null;
+  const ticketEcom = temPedidos && ecomPedidos > 0 ? ecomReceita / ecomPedidos : null;
+
+  const funil: { etapa: string; valor: string; taxa: string | null }[] = [];
+  if (temEcommerce) {
+    funil.push({ etapa: "Investimento em anúncios", valor: formatarMoeda(investimento), taxa: null });
+    if (temCliques) {
+      funil.push({ etapa: "Cliques", valor: formatarNumero(cliques), taxa: null });
+    }
+    if (temSessoes) {
+      funil.push({
+        etapa: "Sessões na loja",
+        valor: formatarNumero(ecomSessoes),
+        taxa:
+          temCliques && cliques > 0
+            ? `${((ecomSessoes / cliques) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 0 })}% dos cliques`
+            : null,
+      });
+    }
+    if (temPedidos) {
+      funil.push({
+        etapa: "Pedidos",
+        valor: formatarNumero(ecomPedidos),
+        taxa:
+          conversao !== null
+            ? `conversão de ${conversao.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`
+            : null,
+      });
+    }
+    funil.push({
+      etapa: "Receita do e-commerce",
+      valor: formatarMoeda(ecomReceita),
+      taxa: ticketEcom !== null ? `ticket ${formatarMoeda(ticketEcom)}` : null,
+    });
+  }
 
   const roas = temReceita && investimento > 0 ? receita / investimento : null;
   const cpc = temCliques && cliques > 0 ? investimento / cliques : null;
@@ -269,6 +325,37 @@ export default async function MarketingPage({
           </tbody>
         </Tabela>
       </Card>
+
+      {temEcommerce && (
+        <Card className="mt-4">
+          <CardLabel>Funil · anúncios → loja online · {formatarMesAno(mes)}</CardLabel>
+          <ol className="mt-3 flex flex-col">
+            {funil.map((f, i) => (
+              <li
+                key={f.etapa}
+                className={`flex flex-wrap items-baseline justify-between gap-2 py-2.5 ${i > 0 ? "border-t border-border" : ""}`}
+              >
+                <span className="text-sm text-muted-foreground">{f.etapa}</span>
+                <span className="flex items-baseline gap-3">
+                  {f.taxa && <span className="text-[12px] text-muted-3">{f.taxa}</span>}
+                  <span className="font-display text-lg font-medium tracking-[-0.02em] tabular-nums">
+                    {f.valor}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          {(temFrete || temDevolucoes) && (
+            <p className="mt-3 text-[12px] text-muted-3">
+              {temFrete ? `Frete no período: ${formatarMoeda(ecomFrete)}` : ""}
+              {temFrete && temDevolucoes ? " · " : ""}
+              {temDevolucoes
+                ? `Devoluções: ${formatarMoeda(ecomDevolucoes)} (receita líquida ${formatarMoeda(ecomReceita - ecomDevolucoes)})`
+                : ""}
+            </p>
+          )}
+        </Card>
+      )}
 
       {quadroConteudo}
     </>

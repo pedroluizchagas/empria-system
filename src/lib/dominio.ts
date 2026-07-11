@@ -40,13 +40,14 @@ export const MODULOS = [
   { rotulo: "Dados", href: "/dados" },
 ] as const;
 
-export const TIPOS_DADO = ["vendas", "trafego", "estoque", "metas"] as const;
+export const TIPOS_DADO = ["vendas", "trafego", "estoque", "ecommerce", "metas"] as const;
 export type TipoDado = (typeof TIPOS_DADO)[number];
 
 export const ROTULO_TIPO_DADO: Record<TipoDado, string> = {
   vendas: "Vendas",
   trafego: "Tráfego pago",
   estoque: "Estoque",
+  ecommerce: "E-commerce",
   metas: "Metas",
 };
 
@@ -55,6 +56,7 @@ export const FASE_TIPO_DADO: Record<TipoDado, number> = {
   vendas: 1,
   trafego: 3,
   estoque: 4,
+  ecommerce: 4,
   metas: 2,
 };
 

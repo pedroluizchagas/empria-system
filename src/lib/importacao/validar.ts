@@ -1,4 +1,4 @@
-import type { CampoEstoque, CampoTrafego, CampoVenda } from "./campos";
+import type { CampoEcommerce, CampoEstoque, CampoTrafego, CampoVenda } from "./campos";
 import type { Celula } from "./planilha";
 
 /**
@@ -364,4 +364,77 @@ export function validarEstoque(
   }
 
   return { aceitas, ignoradas, periodoInicio, periodoFim, somaValor };
+}
+
+export interface EcommerceNormalizado {
+  linha_origem: number;
+  data: string;
+  receita: number;
+  sessoes: number | null;
+  pedidos: number | null;
+  frete: number | null;
+  devolucoes: number | null;
+}
+
+export interface ResultadoValidacaoEcommerce {
+  aceitas: EcommerceNormalizado[];
+  ignoradas: { linha: number; motivo: string }[];
+  periodoInicio: string | null;
+  periodoFim: string | null;
+  /** soma da receita (exibida na revisão). */
+  somaValor: number;
+}
+
+export function validarEcommerce(
+  linhas: { numero: number; celulas: Celula[] }[],
+  mapeamento: Partial<Record<CampoEcommerce, number>>,
+): ResultadoValidacaoEcommerce {
+  const aceitas: EcommerceNormalizado[] = [];
+  const ignoradas: { linha: number; motivo: string }[] = [];
+  let somaValor = 0;
+
+  const pegar = (celulas: Celula[], campo: CampoEcommerce): Celula => {
+    const idx = mapeamento[campo];
+    return idx === undefined ? null : celulas[idx] ?? null;
+  };
+
+  for (const { numero, celulas } of linhas) {
+    const data = interpretarData(pegar(celulas, "data"));
+    if (!data) {
+      ignoradas.push({ linha: numero, motivo: "data ausente ou inválida" });
+      continue;
+    }
+    const receita = interpretarValor(pegar(celulas, "receita"));
+    if (receita === null) {
+      ignoradas.push({ linha: numero, motivo: "receita ausente ou inválida" });
+      continue;
+    }
+
+    const receitaCentavos = Math.round(receita * 100) / 100;
+    aceitas.push({
+      linha_origem: numero,
+      data,
+      receita: receitaCentavos,
+      sessoes: interpretarValor(pegar(celulas, "sessoes")),
+      pedidos: interpretarValor(pegar(celulas, "pedidos")),
+      frete: interpretarValor(pegar(celulas, "frete")),
+      devolucoes: interpretarValor(pegar(celulas, "devolucoes")),
+    });
+    somaValor += receitaCentavos;
+  }
+
+  let periodoInicio: string | null = null;
+  let periodoFim: string | null = null;
+  for (const e of aceitas) {
+    if (!periodoInicio || e.data < periodoInicio) periodoInicio = e.data;
+    if (!periodoFim || e.data > periodoFim) periodoFim = e.data;
+  }
+
+  return {
+    aceitas,
+    ignoradas,
+    periodoInicio,
+    periodoFim,
+    somaValor: Math.round(somaValor * 100) / 100,
+  };
 }

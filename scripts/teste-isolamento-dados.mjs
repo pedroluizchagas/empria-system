@@ -325,6 +325,23 @@ async function main() {
     const { data: estoqueB } = await gerenteB.cliente.from("fato_estoque").select("id");
     checar("outra empresa NÃO vê o estoque", (estoqueB?.length ?? 0) === 0);
 
+    // ---- e-commerce (Fase 4) ----
+    console.log("\nE-commerce (Fase 4):");
+    const { error: erroEcom } = await gerenteA.cliente.from("fato_ecommerce").insert({
+      empresa_id: A.empresaId,
+      unidade_id: A.unidadeId,
+      importacao_id: importacao.id,
+      linha_origem: 2,
+      data: "2026-06-01",
+      receita: 500,
+      sessoes: 120,
+      pedidos: 4,
+    });
+    checar("gerente grava relatório de e-commerce", !erroEcom);
+
+    const { data: ecomB } = await gerenteB.cliente.from("fato_ecommerce").select("id");
+    checar("outra empresa NÃO vê o e-commerce", (ecomB?.length ?? 0) === 0);
+
     // ---- desfazer de verdade, como gerente A ----
     console.log("\nDesfazer (gerente A):");
     const { error: erroDesfazerFatos } = await gerenteA.cliente

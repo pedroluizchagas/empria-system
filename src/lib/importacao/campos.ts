@@ -236,8 +236,65 @@ export const DEFINICOES_ESTOQUE: DefinicaoCampo[] = [
   },
 ];
 
+export const CAMPOS_ECOMMERCE = [
+  "data",
+  "receita",
+  "sessoes",
+  "pedidos",
+  "frete",
+  "devolucoes",
+] as const;
+export type CampoEcommerce = (typeof CAMPOS_ECOMMERCE)[number];
+
+/** Cabeçalhos dos relatórios de Nuvemshop, Shopify e Tray. */
+export const DEFINICOES_ECOMMERCE: DefinicaoCampo[] = [
+  {
+    campo: "data",
+    rotulo: "Data",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["data", "dia", "day", "date"],
+  },
+  {
+    campo: "receita",
+    rotulo: "Receita (R$)",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["receita", "vendas", "total de vendas", "valor total", "faturamento", "total sales", "gross sales"],
+  },
+  {
+    campo: "sessoes",
+    rotulo: "Sessões",
+    obrigatorio: false,
+    desbloqueia: "taxa de conversão do funil",
+    apelidos: ["sessoes", "visitas", "visitantes", "sessions", "acessos"],
+  },
+  {
+    campo: "pedidos",
+    rotulo: "Pedidos",
+    obrigatorio: false,
+    desbloqueia: "conversão e ticket médio",
+    apelidos: ["pedidos", "orders", "n pedidos", "numero de pedidos", "qtde pedidos"],
+  },
+  {
+    campo: "frete",
+    rotulo: "Frete (R$)",
+    obrigatorio: false,
+    desbloqueia: "custo de frete no período",
+    apelidos: ["frete", "shipping", "valor frete"],
+  },
+  {
+    campo: "devolucoes",
+    rotulo: "Devoluções (R$)",
+    obrigatorio: false,
+    desbloqueia: "receita líquida de devoluções",
+    apelidos: ["devolucoes", "reembolsos", "returns", "refunds", "estornos"],
+  },
+];
+
 export const DEFINICOES_POR_TIPO: Record<string, DefinicaoCampo[]> = {
   vendas: DEFINICOES_VENDA,
   trafego: DEFINICOES_TRAFEGO,
   estoque: DEFINICOES_ESTOQUE,
+  ecommerce: DEFINICOES_ECOMMERCE,
 };

@@ -499,7 +499,9 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
                   ? "Total investido"
                   : tipoDado === "estoque"
                     ? "Total de peças"
-                    : "Total em vendas"}
+                    : tipoDado === "ecommerce"
+                      ? "Total em receita"
+                      : "Total em vendas"}
               </p>
               <p className="pt-1 text-sm font-medium">
                 {tipoDado === "estoque"
@@ -598,9 +600,9 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
                         let texto: string;
                         if (bruto === null || bruto === undefined) texto = "—";
                         else if (campo === "data") texto = formatarData(String(bruto));
-                        else if (["valor", "desconto", "investimento", "receita", "custo"].includes(campo))
+                        else if (["valor", "desconto", "investimento", "receita", "custo", "frete", "devolucoes"].includes(campo))
                           texto = formatarMoeda(Number(bruto));
-                        else if (["quantidade", "cliques", "impressoes", "conversoes"].includes(campo))
+                        else if (["quantidade", "cliques", "impressoes", "conversoes", "sessoes", "pedidos"].includes(campo))
                           texto = formatarNumero(Number(bruto));
                         else texto = String(bruto);
                         return <Td key={campo}>{texto}</Td>;
