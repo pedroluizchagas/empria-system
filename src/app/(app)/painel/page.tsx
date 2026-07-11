@@ -96,12 +96,17 @@ export default async function PainelPage() {
         titulo="Visão geral"
         descricao="O resumo do mês da sua operação — alimentado pelas planilhas importadas na Central de Dados."
       >
-        <Button variant="secondary" disabled title="Disponível ainda na Fase 1">
-          Exportar PDF
-        </Button>
-        <Button disabled title="Disponível ainda na Fase 1">
-          Modo Reunião <span aria-hidden>↗</span>
-        </Button>
+        {resumo ? (
+          <Button asChild>
+            <Link href="/reuniao">
+              Modo Reunião <span aria-hidden>↗</span>
+            </Link>
+          </Button>
+        ) : (
+          <Button disabled title="Importe vendas para apresentar">
+            Modo Reunião <span aria-hidden>↗</span>
+          </Button>
+        )}
       </PageHeader>
 
       <div className="grid grid-cols-4 gap-4 max-[1000px]:grid-cols-2 max-[560px]:grid-cols-1">

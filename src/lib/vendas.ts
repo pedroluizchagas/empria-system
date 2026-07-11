@@ -140,3 +140,71 @@ export function resumirVendas(linhas: LinhaVenda[]): ResumoVendas {
 export function diaDaSemana(data: string): number {
   return new Date(`${data}T00:00:00Z`).getUTCDay();
 }
+
+export interface AgregadosVendas {
+  /** Soma por dia do mês (índice 0 = dia 1). */
+  porDia: number[];
+  /** Soma por dia da semana (0 = domingo). */
+  porDiaSemana: number[];
+  temHora: boolean;
+  /** Horas presentes nos dados, contíguas da menor à maior. */
+  horas: number[];
+  /** [índice da hora, dia da semana, valor] — células do heatmap. */
+  celulas: [number, number, number][];
+  maximoCelula: number;
+  /** Soma por unidade_id. */
+  porUnidade: Map<string, number>;
+}
+
+/** Agregações dos painéis (/vendas e Modo Reunião) para um mês de linhas. */
+export function agregarVendas(linhas: LinhaVenda[], fimDoMes: string): AgregadosVendas {
+  const totalDias = Number(fimDoMes.slice(8, 10));
+  const porDia = new Array<number>(totalDias).fill(0);
+  const porDiaSemana = new Array<number>(7).fill(0);
+  const porDiaHora = new Map<number, number>();
+  const porUnidade = new Map<string, number>();
+  let temHora = false;
+
+  for (const linha of linhas) {
+    porDia[Number(linha.data.slice(8, 10)) - 1] += linha.valor;
+    const dow = diaDaSemana(linha.data);
+    porDiaSemana[dow] += linha.valor;
+    if (linha.hora) {
+      temHora = true;
+      const chave = dow * 24 + Number(linha.hora.slice(0, 2));
+      porDiaHora.set(chave, (porDiaHora.get(chave) ?? 0) + linha.valor);
+    }
+    porUnidade.set(linha.unidade_id, (porUnidade.get(linha.unidade_id) ?? 0) + linha.valor);
+  }
+
+  const horasPresentes = [...new Set([...porDiaHora.keys()].map((c) => c % 24))].sort(
+    (a, b) => a - b,
+  );
+  const horas =
+    horasPresentes.length > 0
+      ? Array.from(
+          { length: horasPresentes[horasPresentes.length - 1] - horasPresentes[0] + 1 },
+          (_, i) => horasPresentes[0] + i,
+        )
+      : [];
+  const indicePorHora = new Map(horas.map((h, i) => [h, i]));
+
+  const celulas: [number, number, number][] = [];
+  let maximoCelula = 0;
+  for (const [chave, valor] of porDiaHora) {
+    const idxHora = indicePorHora.get(chave % 24);
+    if (idxHora === undefined) continue;
+    celulas.push([idxHora, Math.floor(chave / 24), Math.round(valor)]);
+    if (valor > maximoCelula) maximoCelula = valor;
+  }
+
+  return {
+    porDia,
+    porDiaSemana,
+    temHora,
+    horas,
+    celulas,
+    maximoCelula: Math.round(maximoCelula),
+    porUnidade,
+  };
+}

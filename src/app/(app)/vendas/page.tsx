@@ -9,8 +9,8 @@ import { formatarMoeda, formatarNumero } from "@/lib/formato";
 import { isSupabaseConfigurado } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import {
+  agregarVendas,
   buscarVendasPeriodo,
-  diaDaSemana,
   intervaloDoMes,
   limitesDatas,
   mesAnterior,
@@ -138,47 +138,9 @@ export default async function VendasPage({
       ? ((resumo.faturamento - resumoAnterior.faturamento) / resumoAnterior.faturamento) * 100
       : null;
 
-  // agregações dos gráficos: por dia do mês, dia da semana, dia × hora, unidade
   const totalDias = Number(fim.slice(8, 10));
-  const porDia = new Array<number>(totalDias).fill(0);
-  const porDiaSemana = new Array<number>(7).fill(0);
-  const porDiaHora = new Map<number, number>();
-  let temHora = false;
-  const porUnidade = new Map<string, number>();
-
-  for (const linha of linhas) {
-    const dia = Number(linha.data.slice(8, 10));
-    porDia[dia - 1] += linha.valor;
-    const dow = diaDaSemana(linha.data);
-    porDiaSemana[dow] += linha.valor;
-    if (linha.hora) {
-      temHora = true;
-      const horaCheia = Number(linha.hora.slice(0, 2));
-      const chave = dow * 24 + horaCheia;
-      porDiaHora.set(chave, (porDiaHora.get(chave) ?? 0) + linha.valor);
-    }
-    porUnidade.set(linha.unidade_id, (porUnidade.get(linha.unidade_id) ?? 0) + linha.valor);
-  }
-
-  const horasPresentes = [...new Set([...porDiaHora.keys()].map((c) => c % 24))].sort(
-    (a, b) => a - b,
-  );
-  const horas =
-    horasPresentes.length > 0
-      ? Array.from(
-          { length: horasPresentes[horasPresentes.length - 1] - horasPresentes[0] + 1 },
-          (_, i) => horasPresentes[0] + i,
-        )
-      : [];
-  const celulas: [number, number, number][] = [];
-  let maximoCelula = 0;
-  for (const [chave, valor] of porDiaHora) {
-    const dow = Math.floor(chave / 24);
-    const idxHora = horas.indexOf(chave % 24);
-    if (idxHora === -1) continue;
-    celulas.push([idxHora, dow, Math.round(valor)]);
-    if (valor > maximoCelula) maximoCelula = valor;
-  }
+  const { porDia, porDiaSemana, temHora, horas, celulas, maximoCelula, porUnidade } =
+    agregarVendas(linhas, fim);
 
   const unidadesComVenda = unidades
     .filter((u) => porUnidade.has(u.id))
@@ -198,6 +160,13 @@ export default async function VendasPage({
           unidades={unidades}
           unidadeAtual={unidadeAtual}
         />
+        <Button asChild>
+          <Link
+            href={`/reuniao?mes=${mes}${unidadeAtual ? `&unidade=${unidadeAtual}` : ""}`}
+          >
+            Modo Reunião <span aria-hidden>↗</span>
+          </Link>
+        </Button>
       </PageHeader>
 
       <div className="grid grid-cols-4 gap-4 max-[1100px]:grid-cols-2">
@@ -269,7 +238,7 @@ export default async function VendasPage({
             <h3 className="mb-3 font-display text-lg font-medium tracking-[-0.02em]">
               Mapa de calor · dia × hora
             </h3>
-            <HeatmapDiaHora horas={horas} celulas={celulas} maximo={Math.round(maximoCelula)} />
+            <HeatmapDiaHora horas={horas} celulas={celulas} maximo={maximoCelula} />
           </Card>
         ) : (
           <Card className="flex flex-col justify-center">
