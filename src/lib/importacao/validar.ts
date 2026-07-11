@@ -1,4 +1,4 @@
-import type { CampoTrafego, CampoVenda } from "./campos";
+import type { CampoEstoque, CampoTrafego, CampoVenda } from "./campos";
 import type { Celula } from "./planilha";
 
 /**
@@ -287,4 +287,81 @@ export function validarTrafego(
     periodoFim,
     somaValor: Math.round(somaValor * 100) / 100,
   };
+}
+
+export interface EstoqueNormalizado {
+  linha_origem: number;
+  /** null = planilha sem coluna de data (o servidor usa o dia da importação). */
+  data: string | null;
+  produto: string;
+  quantidade: number;
+  tamanho: string | null;
+  cor: string | null;
+  categoria: string | null;
+  colecao: string | null;
+  custo: number | null;
+}
+
+export interface ResultadoValidacaoEstoque {
+  aceitas: EstoqueNormalizado[];
+  ignoradas: { linha: number; motivo: string }[];
+  periodoInicio: string | null;
+  periodoFim: string | null;
+  /** soma de peças (exibida na revisão). */
+  somaValor: number;
+}
+
+export function validarEstoque(
+  linhas: { numero: number; celulas: Celula[] }[],
+  mapeamento: Partial<Record<CampoEstoque, number>>,
+): ResultadoValidacaoEstoque {
+  const aceitas: EstoqueNormalizado[] = [];
+  const ignoradas: { linha: number; motivo: string }[] = [];
+  let somaValor = 0;
+
+  const pegar = (celulas: Celula[], campo: CampoEstoque): Celula => {
+    const idx = mapeamento[campo];
+    return idx === undefined ? null : celulas[idx] ?? null;
+  };
+  const texto = (c: Celula): string | null => {
+    if (c === null || c === undefined) return null;
+    const t = String(c).trim();
+    return t === "" ? null : t;
+  };
+
+  for (const { numero, celulas } of linhas) {
+    const produto = texto(pegar(celulas, "produto"));
+    if (!produto) {
+      ignoradas.push({ linha: numero, motivo: "produto ausente" });
+      continue;
+    }
+    const quantidade = interpretarValor(pegar(celulas, "quantidade"));
+    if (quantidade === null) {
+      ignoradas.push({ linha: numero, motivo: "quantidade ausente ou inválida" });
+      continue;
+    }
+
+    aceitas.push({
+      linha_origem: numero,
+      data: interpretarData(pegar(celulas, "data")),
+      produto,
+      quantidade,
+      tamanho: texto(pegar(celulas, "tamanho")),
+      cor: texto(pegar(celulas, "cor")),
+      categoria: texto(pegar(celulas, "categoria")),
+      colecao: texto(pegar(celulas, "colecao")),
+      custo: interpretarValor(pegar(celulas, "custo")),
+    });
+    somaValor += quantidade;
+  }
+
+  let periodoInicio: string | null = null;
+  let periodoFim: string | null = null;
+  for (const e of aceitas) {
+    if (!e.data) continue;
+    if (!periodoInicio || e.data < periodoInicio) periodoInicio = e.data;
+    if (!periodoFim || e.data > periodoFim) periodoFim = e.data;
+  }
+
+  return { aceitas, ignoradas, periodoInicio, periodoFim, somaValor };
 }

@@ -34,6 +34,7 @@ export const ROTULO_TIPO_UNIDADE: Record<TipoUnidade, string> = {
 export const MODULOS = [
   { rotulo: "Painel", href: "/painel" },
   { rotulo: "Vendas", href: "/vendas" },
+  { rotulo: "Produtos", href: "/produtos" },
   { rotulo: "Marketing", href: "/marketing" },
   { rotulo: "Agenda", href: "/agenda" },
   { rotulo: "Dados", href: "/dados" },

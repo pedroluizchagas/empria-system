@@ -495,10 +495,16 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
             </div>
             <div className="rounded-card border border-border bg-background p-4">
               <p className="text-[10px] font-medium uppercase tracking-[0.02em] text-muted-2">
-                {tipoDado === "trafego" ? "Total investido" : "Total em vendas"}
+                {tipoDado === "trafego"
+                  ? "Total investido"
+                  : tipoDado === "estoque"
+                    ? "Total de peças"
+                    : "Total em vendas"}
               </p>
               <p className="pt-1 text-sm font-medium">
-                {formatarMoeda(resultado.somaValor)}
+                {tipoDado === "estoque"
+                  ? formatarNumero(resultado.somaValor)
+                  : formatarMoeda(resultado.somaValor)}
               </p>
             </div>
           </div>
@@ -592,7 +598,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
                         let texto: string;
                         if (bruto === null || bruto === undefined) texto = "—";
                         else if (campo === "data") texto = formatarData(String(bruto));
-                        else if (["valor", "desconto", "investimento", "receita"].includes(campo))
+                        else if (["valor", "desconto", "investimento", "receita", "custo"].includes(campo))
                           texto = formatarMoeda(Number(bruto));
                         else if (["quantidade", "cliques", "impressoes", "conversoes"].includes(campo))
                           texto = formatarNumero(Number(bruto));

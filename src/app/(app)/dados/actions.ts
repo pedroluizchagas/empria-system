@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import type { TipoDado } from "@/lib/dominio";
-import { CAMPOS_TRAFEGO, CAMPOS_VENDA } from "@/lib/importacao/campos";
+import { CAMPOS_ESTOQUE, CAMPOS_TRAFEGO, CAMPOS_VENDA } from "@/lib/importacao/campos";
 import type { Celula } from "@/lib/importacao/planilha";
-import { validarTrafego, validarVendas } from "@/lib/importacao/validar";
+import { validarEstoque, validarTrafego, validarVendas } from "@/lib/importacao/validar";
+import { hojeSaoPaulo } from "@/lib/metas";
 import { exigirGestor, type Contexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
 
@@ -82,6 +83,7 @@ export async function confirmarImportacao(
   const camposValidos: Record<string, readonly string[]> = {
     vendas: CAMPOS_VENDA,
     trafego: CAMPOS_TRAFEGO,
+    estoque: CAMPOS_ESTOQUE,
   };
   const campos = camposValidos[entrada.tipoDado];
   if (!campos) {
@@ -111,8 +113,12 @@ export async function confirmarImportacao(
   const resultado =
     entrada.tipoDado === "trafego"
       ? validarTrafego(linhasCruas, mapeamento)
-      : validarVendas(linhasCruas, mapeamento);
-  const tabelaFato = entrada.tipoDado === "trafego" ? "fato_trafego" : "fato_venda";
+      : entrada.tipoDado === "estoque"
+        ? validarEstoque(linhasCruas, mapeamento)
+        : validarVendas(linhasCruas, mapeamento);
+  const tabelaFato = { vendas: "fato_venda", trafego: "fato_trafego", estoque: "fato_estoque" }[
+    entrada.tipoDado as "vendas" | "trafego" | "estoque"
+  ];
 
   if (resultado.aceitas.length === 0) {
     return { ok: false, erro: "Nenhuma linha válida para importar." };
@@ -169,12 +175,18 @@ export async function confirmarImportacao(
 
   // gravação em lote marcada com o id da importação (é isso que permite desfazer)
   for (let i = 0; i < resultado.aceitas.length; i += TAMANHO_LOTE) {
-    const lote = resultado.aceitas.slice(i, i + TAMANHO_LOTE).map((v) => ({
-      empresa_id: empresaId,
-      unidade_id: entrada.unidadeId,
-      importacao_id: importacao.id,
-      ...v,
-    }));
+    const hoje = hojeSaoPaulo();
+    const lote = resultado.aceitas.slice(i, i + TAMANHO_LOTE).map((v) => {
+      const linha: Record<string, unknown> = {
+        empresa_id: empresaId,
+        unidade_id: entrada.unidadeId,
+        importacao_id: importacao.id,
+        ...v,
+      };
+      // posição de estoque sem coluna de data = retrato de hoje
+      if (entrada.tipoDado === "estoque" && !linha.data) linha.data = hoje;
+      return linha;
+    });
     const { error: erroLote } = await supabase.from(tabelaFato).insert(lote);
     if (erroLote) {
       // rollback: apagar a importação leva os fatos junto (on delete cascade)
@@ -230,7 +242,7 @@ async function desfazerInterno(
   if (!importacao) return "Importação não encontrada.";
   if (importacao.status === "desfeita") return "Essa importação já foi desfeita.";
 
-  for (const tabela of ["fato_venda", "fato_trafego"]) {
+  for (const tabela of ["fato_venda", "fato_trafego", "fato_estoque"]) {
     const { error: erroFatos } = await supabase
       .from(tabela)
       .delete()

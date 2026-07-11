@@ -165,7 +165,79 @@ export const DEFINICOES_TRAFEGO: DefinicaoCampo[] = [
   },
 ];
 
+export const CAMPOS_ESTOQUE = [
+  "produto",
+  "quantidade",
+  "data",
+  "tamanho",
+  "cor",
+  "categoria",
+  "colecao",
+  "custo",
+] as const;
+export type CampoEstoque = (typeof CAMPOS_ESTOQUE)[number];
+
+export const DEFINICOES_ESTOQUE: DefinicaoCampo[] = [
+  {
+    campo: "produto",
+    rotulo: "Produto",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["produto", "descricao", "descricao produto", "item", "mercadoria", "modelo", "referencia", "ref"],
+  },
+  {
+    campo: "quantidade",
+    rotulo: "Quantidade",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["quantidade", "qtde", "qtd", "saldo", "estoque", "disponivel", "saldo atual"],
+  },
+  {
+    campo: "data",
+    rotulo: "Data da posição",
+    obrigatorio: false,
+    desbloqueia: "histórico de posições (sem ela, vale o dia da importação)",
+    apelidos: ["data", "data posicao", "data da posicao", "data referencia"],
+  },
+  {
+    campo: "tamanho",
+    rotulo: "Tamanho",
+    obrigatorio: false,
+    desbloqueia: "análise de grade por tamanho",
+    apelidos: ["tamanho", "tam", "grade"],
+  },
+  {
+    campo: "cor",
+    rotulo: "Cor",
+    obrigatorio: false,
+    desbloqueia: "análise de grade por cor",
+    apelidos: ["cor"],
+  },
+  {
+    campo: "categoria",
+    rotulo: "Categoria",
+    obrigatorio: false,
+    desbloqueia: "estoque por categoria",
+    apelidos: ["categoria", "grupo", "secao", "familia", "linha", "departamento"],
+  },
+  {
+    campo: "colecao",
+    rotulo: "Coleção",
+    obrigatorio: false,
+    desbloqueia: "sell-through da coleção",
+    apelidos: ["colecao", "estacao", "temporada"],
+  },
+  {
+    campo: "custo",
+    rotulo: "Custo unitário (R$)",
+    obrigatorio: false,
+    desbloqueia: "valor de custo do estoque e margem",
+    apelidos: ["custo", "preco custo", "custo unitario", "vlr custo", "custo medio"],
+  },
+];
+
 export const DEFINICOES_POR_TIPO: Record<string, DefinicaoCampo[]> = {
   vendas: DEFINICOES_VENDA,
   trafego: DEFINICOES_TRAFEGO,
+  estoque: DEFINICOES_ESTOQUE,
 };

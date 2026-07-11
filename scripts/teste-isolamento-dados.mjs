@@ -309,6 +309,22 @@ async function main() {
     const { data: pautasB } = await gerenteB.cliente.from("conteudo").select("id");
     checar("outra empresa NÃO vê a pauta", (pautasB?.length ?? 0) === 0);
 
+    // ---- estoque (Fase 4) ----
+    console.log("\nEstoque (Fase 4):");
+    const { error: erroEstoque } = await gerenteA.cliente.from("fato_estoque").insert({
+      empresa_id: A.empresaId,
+      unidade_id: A.unidadeId,
+      importacao_id: importacao.id,
+      linha_origem: 2,
+      data: "2026-06-01",
+      produto: "Camisa teste",
+      quantidade: 10,
+    });
+    checar("gerente grava posição de estoque", !erroEstoque);
+
+    const { data: estoqueB } = await gerenteB.cliente.from("fato_estoque").select("id");
+    checar("outra empresa NÃO vê o estoque", (estoqueB?.length ?? 0) === 0);
+
     // ---- desfazer de verdade, como gerente A ----
     console.log("\nDesfazer (gerente A):");
     const { error: erroDesfazerFatos } = await gerenteA.cliente
