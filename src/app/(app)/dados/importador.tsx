@@ -15,9 +15,10 @@ import {
   ROTULO_TIPO_DADO,
   TIPOS_DADO,
   type ModeloMapeamento,
+  type TipoDado,
 } from "@/lib/dominio";
 import { formatarData, formatarMoeda, formatarNumero } from "@/lib/formato";
-import { CAMPOS_VENDA, DEFINICOES_VENDA, type CampoVenda } from "@/lib/importacao/campos";
+import { DEFINICOES_POR_TIPO } from "@/lib/importacao/campos";
 import {
   assinaturaColunas,
   detectarEstrutura,
@@ -25,7 +26,12 @@ import {
   type Celula,
   type EstruturaPlanilha,
 } from "@/lib/importacao/planilha";
-import { validarVendas, type ResultadoValidacao } from "@/lib/importacao/validar";
+import {
+  validarTrafego,
+  validarVendas,
+  type ResultadoValidacao,
+  type ResultadoValidacaoTrafego,
+} from "@/lib/importacao/validar";
 import { cn } from "@/lib/utils";
 import {
   confirmarImportacao,
@@ -50,11 +56,12 @@ const PASSOS: { numero: Passo; rotulo: string }[] = [
 
 export function Importador({ configurado, unidades, modelos }: ImportadorProps) {
   const [passo, setPasso] = useState<Passo>(1);
+  const [tipoDado, setTipoDado] = useState<TipoDado>("vendas");
   const [unidadeId, setUnidadeId] = useState(unidades[0]?.id ?? "");
   const [arquivoNome, setArquivoNome] = useState("");
   const [estrutura, setEstrutura] = useState<EstruturaPlanilha | null>(null);
   const [assinatura, setAssinatura] = useState("");
-  const [mapeamento, setMapeamento] = useState<Partial<Record<CampoVenda, number>>>({});
+  const [mapeamento, setMapeamento] = useState<Record<string, number>>({});
   const [modeloAplicado, setModeloAplicado] = useState<ModeloMapeamento | null>(null);
   const [salvarModelo, setSalvarModelo] = useState(true);
   const [nomeModelo, setNomeModelo] = useState("");
@@ -68,11 +75,18 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
   const inputArquivo = useRef<HTMLInputElement>(null);
 
   // calculado uma única vez por transição para a revisão (arquivos grandes)
-  const [resultado, setResultado] = useState<ResultadoValidacao | null>(null);
+  const [resultado, setResultado] = useState<
+    ResultadoValidacao | ResultadoValidacaoTrafego | null
+  >(null);
+  const DEFINICOES = DEFINICOES_POR_TIPO[tipoDado];
+  const validar = tipoDado === "trafego" ? validarTrafego : validarVendas;
 
   const camposMapeados = useMemo(
-    () => CAMPOS_VENDA.filter((c) => mapeamento[c] !== undefined),
-    [mapeamento],
+    () => DEFINICOES.map((d) => d.campo).filter((c) => mapeamento[c] !== undefined),
+    [DEFINICOES, mapeamento],
+  );
+  const obrigatoriosOk = DEFINICOES.filter((d) => d.obrigatorio).every(
+    (d) => mapeamento[d.campo] !== undefined,
   );
 
   function reiniciar() {
@@ -92,11 +106,8 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
     if (inputArquivo.current) inputArquivo.current.value = "";
   }
 
-  async function irParaRevisao(
-    est: EstruturaPlanilha,
-    map: Partial<Record<CampoVenda, number>>,
-  ) {
-    const r = validarVendas(est.linhas, map);
+  async function irParaRevisao(est: EstruturaPlanilha, map: Record<string, number>) {
+    const r = validar(est.linhas, map);
     setResultado(r);
     setPasso(3);
     setExistentes([]);
@@ -105,7 +116,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
     if (r.periodoInicio && r.periodoFim && unidadeId) {
       const sobrepostas = await verificarPeriodo(
         unidadeId,
-        "vendas",
+        tipoDado,
         r.periodoInicio,
         r.periodoFim,
       );
@@ -141,18 +152,20 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
       setNomeModelo(arquivo.name.replace(/\.(xlsx?|csv)$/i, ""));
 
       // origem conhecida? aplica o modelo salvo e vai direto para a revisão
-      const modelo = modelos.find((m) => m.assinatura === ass);
+      const modelo = modelos.find((m) => m.assinatura === ass && m.tipo_dado === tipoDado);
       const indicesValidos = (m: Record<string, number>) =>
         Object.values(m).every((i) => i >= 0 && i < est.colunas.length);
+      const obrigatoriosNoModelo = (m: Record<string, number>) =>
+        DEFINICOES.filter((d) => d.obrigatorio).every((d) => m[d.campo] !== undefined);
 
-      if (modelo && indicesValidos(modelo.mapeamento) && modelo.mapeamento.data !== undefined && modelo.mapeamento.valor !== undefined) {
-        const map = modelo.mapeamento as Partial<Record<CampoVenda, number>>;
+      if (modelo && indicesValidos(modelo.mapeamento) && obrigatoriosNoModelo(modelo.mapeamento)) {
+        const map = modelo.mapeamento;
         setMapeamento(map);
         setModeloAplicado(modelo);
         setSalvarModelo(false);
         void irParaRevisao(est, map);
       } else {
-        setMapeamento(sugerirMapeamento(est.colunas, DEFINICOES_VENDA));
+        setMapeamento(sugerirMapeamento(est.colunas, DEFINICOES));
         setModeloAplicado(null);
         setSalvarModelo(true);
         setPasso(2);
@@ -176,7 +189,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
     }));
 
     const r = await confirmarImportacao({
-      tipoDado: "vendas",
+      tipoDado,
       unidadeId,
       arquivoNome,
       colunas,
@@ -249,13 +262,20 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
           <div className="flex flex-wrap gap-3">
             <div className="flex w-44 flex-col gap-1.5">
               <Label htmlFor="imp-tipo">Tipo de dado</Label>
-              <Select id="imp-tipo" value="vendas" onChange={() => {}}>
-                {TIPOS_DADO.map((tipo) => (
-                  <option key={tipo} value={tipo} disabled={tipo !== "vendas"}>
-                    {ROTULO_TIPO_DADO[tipo]}
-                    {tipo !== "vendas" ? ` · Fase ${FASE_TIPO_DADO[tipo]}` : ""}
-                  </option>
-                ))}
+              <Select
+                id="imp-tipo"
+                value={tipoDado}
+                onChange={(e) => setTipoDado(e.target.value as TipoDado)}
+              >
+                {TIPOS_DADO.map((tipo) => {
+                  const disponivel = tipo in DEFINICOES_POR_TIPO;
+                  return (
+                    <option key={tipo} value={tipo} disabled={!disponivel}>
+                      {ROTULO_TIPO_DADO[tipo]}
+                      {!disponivel ? ` · Fase ${FASE_TIPO_DADO[tipo]}` : ""}
+                    </option>
+                  );
+                })}
               </Select>
             </div>
             <div className="flex min-w-44 flex-1 flex-col gap-1.5">
@@ -341,7 +361,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
           </p>
 
           <div className="overflow-hidden rounded-card border border-border">
-            {DEFINICOES_VENDA.map((def, i) => (
+            {DEFINICOES.map((def, i) => (
               <div
                 key={def.campo}
                 className={cn(
@@ -408,14 +428,15 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
             </Button>
             <Button
               type="button"
-              disabled={mapeamento.data === undefined || mapeamento.valor === undefined}
+              disabled={!obrigatoriosOk}
               onClick={() => void irParaRevisao(estrutura, mapeamento)}
             >
               Continuar
             </Button>
-            {(mapeamento.data === undefined || mapeamento.valor === undefined) && (
+            {!obrigatoriosOk && (
               <span className="text-[12px] text-muted-3">
-                Aponte pelo menos a data e o valor.
+                Aponte as colunas obrigatórias:{" "}
+                {DEFINICOES.filter((d) => d.obrigatorio).map((d) => d.rotulo).join(", ")}.
               </span>
             )}
           </div>
@@ -474,7 +495,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
             </div>
             <div className="rounded-card border border-border bg-background p-4">
               <p className="text-[10px] font-medium uppercase tracking-[0.02em] text-muted-2">
-                Total em vendas
+                {tipoDado === "trafego" ? "Total investido" : "Total em vendas"}
               </p>
               <p className="pt-1 text-sm font-medium">
                 {formatarMoeda(resultado.somaValor)}
@@ -555,32 +576,32 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
                   <Th>Linha</Th>
                   {camposMapeados.map((campo) => (
                     <Th key={campo}>
-                      {DEFINICOES_VENDA.find((d) => d.campo === campo)?.rotulo ?? campo}
+                      {DEFINICOES.find((d) => d.campo === campo)?.rotulo ?? campo}
                     </Th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {resultado.aceitas.slice(0, 6).map((v) => (
-                  <tr key={v.linha_origem}>
-                    <Td className="text-muted-3">{v.linha_origem}</Td>
-                    {camposMapeados.map((campo) => (
-                      <Td key={campo}>
-                        {campo === "data" && formatarData(v.data)}
-                        {campo === "valor" && formatarMoeda(v.valor)}
-                        {campo === "desconto" &&
-                          (v.desconto !== null ? formatarMoeda(v.desconto) : "—")}
-                        {campo === "quantidade" &&
-                          (v.quantidade !== null ? formatarNumero(v.quantidade) : "—")}
-                        {campo !== "data" &&
-                          campo !== "valor" &&
-                          campo !== "desconto" &&
-                          campo !== "quantidade" &&
-                          (v[campo] ?? "—")}
-                      </Td>
-                    ))}
-                  </tr>
-                ))}
+                {resultado.aceitas.slice(0, 6).map((v) => {
+                  const linha = v as unknown as Record<string, string | number | null>;
+                  return (
+                    <tr key={v.linha_origem}>
+                      <Td className="text-muted-3">{v.linha_origem}</Td>
+                      {camposMapeados.map((campo) => {
+                        const bruto = linha[campo];
+                        let texto: string;
+                        if (bruto === null || bruto === undefined) texto = "—";
+                        else if (campo === "data") texto = formatarData(String(bruto));
+                        else if (["valor", "desconto", "investimento", "receita"].includes(campo))
+                          texto = formatarMoeda(Number(bruto));
+                        else if (["quantidade", "cliques", "impressoes", "conversoes"].includes(campo))
+                          texto = formatarNumero(Number(bruto));
+                        else texto = String(bruto);
+                        return <Td key={campo}>{texto}</Td>;
+                      })}
+                    </tr>
+                  );
+                })}
               </tbody>
             </Tabela>
           )}
@@ -614,7 +635,7 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
             <CheckCircle2 className="size-5" strokeWidth={1.5} />
           </span>
           <p className="font-display text-xl font-medium tracking-[-0.02em]">
-            {sucesso.aceitas.toLocaleString("pt-BR")} vendas importadas
+            {sucesso.aceitas.toLocaleString("pt-BR")} linhas importadas
           </p>
           <p className="max-w-sm text-sm text-muted-foreground">
             {sucesso.ignoradas > 0
@@ -624,7 +645,9 @@ export function Importador({ configurado, unidades, modelos }: ImportadorProps) 
           </p>
           <div className="mt-2 flex gap-2.5">
             <Button asChild>
-              <Link href="/vendas">Ver vendas</Link>
+              <Link href={tipoDado === "trafego" ? "/marketing" : "/vendas"}>
+                {tipoDado === "trafego" ? "Ver marketing" : "Ver vendas"}
+              </Link>
             </Button>
             <Button variant="secondary" type="button" onClick={reiniciar}>
               Nova importação

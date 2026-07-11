@@ -1,4 +1,4 @@
-import type { CampoVenda } from "./campos";
+import type { CampoTrafego, CampoVenda } from "./campos";
 import type { Celula } from "./planilha";
 
 /**
@@ -197,6 +197,87 @@ export function validarVendas(
   for (const v of aceitas) {
     if (!periodoInicio || v.data < periodoInicio) periodoInicio = v.data;
     if (!periodoFim || v.data > periodoFim) periodoFim = v.data;
+  }
+
+  return {
+    aceitas,
+    ignoradas,
+    periodoInicio,
+    periodoFim,
+    somaValor: Math.round(somaValor * 100) / 100,
+  };
+}
+
+export interface TrafegoNormalizado {
+  linha_origem: number;
+  data: string;
+  campanha: string;
+  investimento: number;
+  cliques: number | null;
+  impressoes: number | null;
+  conversoes: number | null;
+  receita: number | null;
+}
+
+export interface ResultadoValidacaoTrafego {
+  aceitas: TrafegoNormalizado[];
+  ignoradas: { linha: number; motivo: string }[];
+  periodoInicio: string | null;
+  periodoFim: string | null;
+  /** soma do investimento (exibida na revisão). */
+  somaValor: number;
+}
+
+export function validarTrafego(
+  linhas: { numero: number; celulas: Celula[] }[],
+  mapeamento: Partial<Record<CampoTrafego, number>>,
+): ResultadoValidacaoTrafego {
+  const aceitas: TrafegoNormalizado[] = [];
+  const ignoradas: { linha: number; motivo: string }[] = [];
+  let somaValor = 0;
+
+  const pegar = (celulas: Celula[], campo: CampoTrafego): Celula => {
+    const idx = mapeamento[campo];
+    return idx === undefined ? null : celulas[idx] ?? null;
+  };
+
+  for (const { numero, celulas } of linhas) {
+    const data = interpretarData(pegar(celulas, "data"));
+    if (!data) {
+      ignoradas.push({ linha: numero, motivo: "data ausente ou inválida" });
+      continue;
+    }
+    const campanha = pegar(celulas, "campanha");
+    const nomeCampanha = campanha === null ? "" : String(campanha).trim();
+    if (!nomeCampanha) {
+      ignoradas.push({ linha: numero, motivo: "campanha ausente" });
+      continue;
+    }
+    const investimento = interpretarValor(pegar(celulas, "investimento"));
+    if (investimento === null) {
+      ignoradas.push({ linha: numero, motivo: "investimento ausente ou inválido" });
+      continue;
+    }
+
+    const investimentoCentavos = Math.round(investimento * 100) / 100;
+    aceitas.push({
+      linha_origem: numero,
+      data,
+      campanha: nomeCampanha,
+      investimento: investimentoCentavos,
+      cliques: interpretarValor(pegar(celulas, "cliques")),
+      impressoes: interpretarValor(pegar(celulas, "impressoes")),
+      conversoes: interpretarValor(pegar(celulas, "conversoes")),
+      receita: interpretarValor(pegar(celulas, "receita")),
+    });
+    somaValor += investimentoCentavos;
+  }
+
+  let periodoInicio: string | null = null;
+  let periodoFim: string | null = null;
+  for (const t of aceitas) {
+    if (!periodoInicio || t.data < periodoInicio) periodoInicio = t.data;
+    if (!periodoFim || t.data > periodoFim) periodoFim = t.data;
   }
 
   return {

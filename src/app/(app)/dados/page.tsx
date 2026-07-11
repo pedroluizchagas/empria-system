@@ -41,10 +41,7 @@ export default async function DadosPage() {
           .select("id, nome")
           .eq("ativa", true)
           .order("nome"),
-        supabase
-          .from("modelo_mapeamento")
-          .select("*")
-          .eq("tipo_dado", "vendas"),
+        supabase.from("modelo_mapeamento").select("*"),
         supabase
           .from("importacao")
           .select("*, unidade(nome)")

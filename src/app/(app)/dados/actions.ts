@@ -2,9 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import type { TipoDado } from "@/lib/dominio";
-import { CAMPOS_VENDA, type CampoVenda } from "@/lib/importacao/campos";
+import { CAMPOS_TRAFEGO, CAMPOS_VENDA } from "@/lib/importacao/campos";
 import type { Celula } from "@/lib/importacao/planilha";
-import { validarVendas } from "@/lib/importacao/validar";
+import { validarTrafego, validarVendas } from "@/lib/importacao/validar";
 import { exigirGestor, type Contexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
 
@@ -53,7 +53,7 @@ export interface EntradaImportacao {
   unidadeId: string;
   arquivoNome: string;
   /** Campos mapeados, na ordem das células de cada linha. */
-  colunas: CampoVenda[];
+  colunas: string[];
   /** Linhas cruas projetadas nas colunas mapeadas: n = linha no arquivo. */
   linhas: { n: number; c: Celula[] }[];
   /** Modelo aplicado (se reconhecido) — registrado na importação. */
@@ -79,10 +79,15 @@ export async function confirmarImportacao(
   if (!contexto?.pessoa) {
     return { ok: false, erro: "Apenas proprietário ou gerente podem importar dados." };
   }
-  if (entrada.tipoDado !== "vendas") {
+  const camposValidos: Record<string, readonly string[]> = {
+    vendas: CAMPOS_VENDA,
+    trafego: CAMPOS_TRAFEGO,
+  };
+  const campos = camposValidos[entrada.tipoDado];
+  if (!campos) {
     return { ok: false, erro: "Este tipo de dado ainda não pode ser importado." };
   }
-  if (entrada.colunas.some((c) => !CAMPOS_VENDA.includes(c))) {
+  if (entrada.colunas.some((c) => !campos.includes(c))) {
     return { ok: false, erro: "Mapeamento inválido." };
   }
 
@@ -98,14 +103,16 @@ export async function confirmarImportacao(
   if (!unidade) return { ok: false, erro: "Unidade não encontrada." };
 
   // Revalida tudo no servidor — a prévia do navegador não é fonte de verdade.
-  const mapeamento: Partial<Record<CampoVenda, number>> = {};
+  const mapeamento: Record<string, number> = {};
   entrada.colunas.forEach((campo, i) => {
     mapeamento[campo] = i;
   });
-  const resultado = validarVendas(
-    entrada.linhas.map((l) => ({ numero: l.n, celulas: l.c })),
-    mapeamento,
-  );
+  const linhasCruas = entrada.linhas.map((l) => ({ numero: l.n, celulas: l.c }));
+  const resultado =
+    entrada.tipoDado === "trafego"
+      ? validarTrafego(linhasCruas, mapeamento)
+      : validarVendas(linhasCruas, mapeamento);
+  const tabelaFato = entrada.tipoDado === "trafego" ? "fato_trafego" : "fato_venda";
 
   if (resultado.aceitas.length === 0) {
     return { ok: false, erro: "Nenhuma linha válida para importar." };
@@ -168,7 +175,7 @@ export async function confirmarImportacao(
       importacao_id: importacao.id,
       ...v,
     }));
-    const { error: erroLote } = await supabase.from("fato_venda").insert(lote);
+    const { error: erroLote } = await supabase.from(tabelaFato).insert(lote);
     if (erroLote) {
       // rollback: apagar a importação leva os fatos junto (on delete cascade)
       await supabase.from("importacao").delete().eq("id", importacao.id);
@@ -193,6 +200,7 @@ export async function confirmarImportacao(
   revalidatePath("/dados");
   revalidatePath("/vendas");
   revalidatePath("/painel");
+  revalidatePath("/marketing");
 
   return {
     ok: true,
@@ -222,12 +230,14 @@ async function desfazerInterno(
   if (!importacao) return "Importação não encontrada.";
   if (importacao.status === "desfeita") return "Essa importação já foi desfeita.";
 
-  const { error: erroFatos } = await supabase
-    .from("fato_venda")
-    .delete()
-    .eq("importacao_id", importacaoId)
-    .eq("empresa_id", empresaId);
-  if (erroFatos) return "Não foi possível remover os dados importados.";
+  for (const tabela of ["fato_venda", "fato_trafego"]) {
+    const { error: erroFatos } = await supabase
+      .from(tabela)
+      .delete()
+      .eq("importacao_id", importacaoId)
+      .eq("empresa_id", empresaId);
+    if (erroFatos) return "Não foi possível remover os dados importados.";
+  }
 
   const { error: erroStatus } = await supabase
     .from("importacao")

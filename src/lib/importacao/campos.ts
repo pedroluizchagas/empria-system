@@ -19,7 +19,7 @@ export const CAMPOS_VENDA = [
 export type CampoVenda = (typeof CAMPOS_VENDA)[number];
 
 export interface DefinicaoCampo {
-  campo: CampoVenda;
+  campo: string;
   rotulo: string;
   obrigatorio: boolean;
   /** O que a coluna desbloqueia — exibido no passo de mapeamento. */
@@ -100,3 +100,72 @@ export const DEFINICOES_VENDA: DefinicaoCampo[] = [
     apelidos: ["canal", "origem", "tipo venda", "canal venda"],
   },
 ];
+
+export const CAMPOS_TRAFEGO = [
+  "data",
+  "campanha",
+  "investimento",
+  "cliques",
+  "impressoes",
+  "conversoes",
+  "receita",
+] as const;
+export type CampoTrafego = (typeof CAMPOS_TRAFEGO)[number];
+
+/** Cabeçalhos dos exports do Gerenciador de Anúncios (Meta) e Google Ads. */
+export const DEFINICOES_TRAFEGO: DefinicaoCampo[] = [
+  {
+    campo: "data",
+    rotulo: "Data",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["dia", "data", "day", "inicio dos relatorios", "data de inicio"],
+  },
+  {
+    campo: "campanha",
+    rotulo: "Campanha",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["campanha", "nome da campanha", "campaign", "campaign name"],
+  },
+  {
+    campo: "investimento",
+    rotulo: "Investimento (R$)",
+    obrigatorio: true,
+    desbloqueia: null,
+    apelidos: ["valor gasto", "valor gasto (brl)", "custo", "gasto", "investimento", "amount spent", "cost"],
+  },
+  {
+    campo: "cliques",
+    rotulo: "Cliques",
+    obrigatorio: false,
+    desbloqueia: "CPC",
+    apelidos: ["cliques", "cliques no link", "clicks", "link clicks"],
+  },
+  {
+    campo: "impressoes",
+    rotulo: "Impressões",
+    obrigatorio: false,
+    desbloqueia: "CPM e alcance",
+    apelidos: ["impressoes", "impressions", "exibicoes"],
+  },
+  {
+    campo: "conversoes",
+    rotulo: "Conversões",
+    obrigatorio: false,
+    desbloqueia: "custo por conversão",
+    apelidos: ["conversoes", "resultados", "compras", "conversions", "results", "purchases"],
+  },
+  {
+    campo: "receita",
+    rotulo: "Receita (R$)",
+    obrigatorio: false,
+    desbloqueia: "ROAS — receita sobre investimento",
+    apelidos: ["valor de conversao", "valor de conversao da compra", "receita", "conv value", "purchase conversion value", "valor de conversoes"],
+  },
+];
+
+export const DEFINICOES_POR_TIPO: Record<string, DefinicaoCampo[]> = {
+  vendas: DEFINICOES_VENDA,
+  trafego: DEFINICOES_TRAFEGO,
+};
