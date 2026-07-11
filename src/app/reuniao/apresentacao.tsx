@@ -27,6 +27,8 @@ export interface DadosApresentacao {
   kpis: { rotulo: string; valor: string; detalhe?: string }[];
   dias: string[];
   porDia: number[];
+  faixas: { nome: string; de: number; ate: number }[];
+  marcos: { nome: string; dia: number }[];
   porDiaSemana: number[];
   temHora: boolean;
   horas: number[];
@@ -100,7 +102,12 @@ export function Apresentacao(dados: DadosApresentacao) {
       <div className="flex h-full flex-col justify-center">
         <TituloSlide eyebrow={dados.mesRotulo} titulo="Venda por dia" />
         <div className="rounded-card border border-border bg-surface p-6">
-          <GraficoVendaPorDia dias={dados.dias} valores={dados.porDia} />
+          <GraficoVendaPorDia
+            dias={dados.dias}
+            valores={dados.porDia}
+            faixas={dados.faixas}
+            marcos={dados.marcos}
+          />
         </div>
       </div>
     ),

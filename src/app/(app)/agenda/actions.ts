@@ -149,3 +149,44 @@ export async function excluirTarefa(tarefaId: string): Promise<void> {
     .eq("empresa_id", contexto.pessoa.empresa_id);
   revalidatePath("/agenda");
 }
+
+// ---------- Comunicados ----------
+
+export async function criarComunicado(
+  _anterior: EstadoAcao,
+  formData: FormData,
+): Promise<EstadoAcao> {
+  const contexto = await exigirEditor();
+  if (!contexto?.pessoa) {
+    return { ok: false, erro: "Apenas proprietário, gerente ou líder publicam comunicados." };
+  }
+
+  const titulo = String(formData.get("titulo") ?? "").trim();
+  const corpo = String(formData.get("corpo") ?? "").trim();
+  if (titulo.length < 2) return { ok: false, erro: "Dê um título ao comunicado." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("comunicado").insert({
+    empresa_id: contexto.pessoa.empresa_id,
+    titulo,
+    corpo: corpo || null,
+    criado_por: contexto.pessoa.id,
+  });
+  if (error) return { ok: false, erro: "Não foi possível publicar." };
+
+  revalidatePath("/agenda");
+  return { ok: true, erro: null };
+}
+
+export async function excluirComunicado(comunicadoId: string): Promise<void> {
+  const contexto = await exigirEditor();
+  if (!contexto?.pessoa) return;
+
+  const supabase = await createClient();
+  await supabase
+    .from("comunicado")
+    .delete()
+    .eq("id", comunicadoId)
+    .eq("empresa_id", contexto.pessoa.empresa_id);
+  revalidatePath("/agenda");
+}

@@ -18,6 +18,15 @@ import { obterContexto } from "@/lib/supabase/contexto";
 import { createClient } from "@/lib/supabase/server";
 import { NovoEvento, ExcluirEvento } from "./novo-evento";
 import { NovaTarefa, TarefaCheck, ExcluirTarefa } from "./tarefas";
+import { NovoComunicado, ExcluirComunicado } from "./comunicados";
+
+interface Comunicado {
+  id: string;
+  titulo: string;
+  corpo: string | null;
+  criado_em: string;
+  autor: { nome: string } | null;
+}
 
 interface Tarefa {
   id: string;
@@ -49,7 +58,13 @@ export default async function AgendaPage() {
   const editor = !!papel && ["proprietario", "gerente", "lider"].includes(papel);
 
   const supabase = await createClient();
-  const [{ data: dataEventos }, { data: dataUnidades }, { data: dataTarefas }, { data: dataPessoas }] =
+  const [
+    { data: dataEventos },
+    { data: dataUnidades },
+    { data: dataTarefas },
+    { data: dataPessoas },
+    { data: dataComunicados },
+  ] =
     await Promise.all([
       supabase
         .from("evento_agenda")
@@ -64,12 +79,18 @@ export default async function AgendaPage() {
         .order("prazo", { ascending: true, nullsFirst: false })
         .limit(100),
       supabase.from("pessoa").select("id, nome").order("nome"),
+      supabase
+        .from("comunicado")
+        .select("id, titulo, corpo, criado_em, autor:pessoa!comunicado_criado_por_fkey(nome)")
+        .order("criado_em", { ascending: false })
+        .limit(20),
     ]);
   const eventos =
     (dataEventos as (EventoAgenda & { unidade: Pick<Unidade, "nome"> | null })[]) ?? [];
   const unidades = dataUnidades ?? [];
   const tarefas = (dataTarefas as unknown as Tarefa[]) ?? [];
   const pessoas = dataPessoas ?? [];
+  const comunicados = (dataComunicados as unknown as Comunicado[]) ?? [];
   const hoje = hojeSaoPaulo();
   const fimJanela = `${Number(hoje.slice(0, 4))}-12-31`;
   const datasVarejo = datasDoVarejoNoPeriodo(hoje, fimJanela).slice(0, 4);
@@ -208,6 +229,44 @@ export default async function AgendaPage() {
               })}
             </tbody>
           </Tabela>
+        )}
+      </section>
+
+      <section className="mt-8">
+        <h2 className="mb-3 font-display text-xl font-medium tracking-[-0.02em]">
+          Comunicados
+        </h2>
+        {editor && (
+          <Card className="mb-4">
+            <CardLabel>Publicar no mural</CardLabel>
+            <NovoComunicado />
+          </Card>
+        )}
+        {comunicados.length === 0 ? (
+          <Card>
+            <p className="text-sm text-muted-foreground">
+              Mural vazio — avise a equipe de uma meta batida ou mudança de campanha.
+            </p>
+          </Card>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {comunicados.map((c) => (
+              <Card key={c.id} className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-medium">{c.titulo}</p>
+                    {c.corpo && (
+                      <p className="mt-1 text-sm text-muted-foreground">{c.corpo}</p>
+                    )}
+                    <p className="mt-2 text-[12px] text-muted-3">
+                      {c.autor?.nome ?? "—"} · {formatarData(c.criado_em.slice(0, 10))}
+                    </p>
+                  </div>
+                  {editor && <ExcluirComunicado comunicadoId={c.id} />}
+                </div>
+              </Card>
+            ))}
+          </div>
         )}
       </section>
     </>

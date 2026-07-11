@@ -16,6 +16,7 @@ import {
   mesesEntre,
   resumirVendas,
 } from "@/lib/vendas";
+import { datasDoVarejoNoPeriodo } from "@/lib/varejo";
 import { Apresentacao } from "./apresentacao";
 
 export const metadata: Metadata = { title: "Modo Reunião" };
@@ -62,11 +63,20 @@ export default async function ReuniaoPage({
   const anterior = intervaloDoMes(mesAnterior(mes));
   const mesAnoPassado = `${Number(mes.slice(0, 4)) - 1}-${mes.slice(5, 7)}`;
   const anoPassado = intervaloDoMes(mesAnoPassado);
-  const [linhas, linhasAnterior, linhasAnoPassado, metas] = await Promise.all([
+  let consultaEventos = supabase
+    .from("evento_agenda")
+    .select("titulo, inicio, fim")
+    .lte("inicio", fim)
+    .or(`fim.gte.${inicio},inicio.gte.${inicio}`);
+  if (unidadeAtual) {
+    consultaEventos = consultaEventos.or(`unidade_id.is.null,unidade_id.eq.${unidadeAtual}`);
+  }
+  const [linhas, linhasAnterior, linhasAnoPassado, metas, { data: dataEventos }] = await Promise.all([
     buscarVendasPeriodo(supabase, inicio, fim, unidadeAtual || undefined),
     buscarVendasPeriodo(supabase, anterior.inicio, anterior.fim, unidadeAtual || undefined),
     buscarVendasPeriodo(supabase, anoPassado.inicio, anoPassado.fim, unidadeAtual || undefined),
     buscarMetas(supabase, mes),
+    consultaEventos,
   ]);
 
   if (linhas.length === 0) {
@@ -153,6 +163,21 @@ export default async function ReuniaoPage({
     meta: metaAtual && ritmo ? { valor: metaAtual.valor, ritmo } : null,
   });
 
+  const faixas: { nome: string; de: number; ate: number }[] = [];
+  const marcos: { nome: string; dia: number }[] = [];
+  for (const ev of dataEventos ?? []) {
+    const de = ev.inicio < inicio ? 1 : Number(ev.inicio.slice(8, 10));
+    const fimEv = ev.fim ?? ev.inicio;
+    const ate = fimEv > fim ? totalDias : Number(fimEv.slice(8, 10));
+    if (ate < de) continue;
+    if (de === ate) marcos.push({ nome: ev.titulo, dia: de });
+    else faixas.push({ nome: ev.titulo, de, ate });
+  }
+  for (const dv of datasDoVarejoNoPeriodo(inicio, fim)) {
+    const dia = Number(dv.data.slice(8, 10));
+    if (!marcos.some((m) => m.dia === dia)) marcos.push({ nome: dv.nome, dia });
+  }
+
   const geradoEm = new Intl.DateTimeFormat("pt-BR", {
     dateStyle: "long",
     timeZone: "America/Sao_Paulo",
@@ -176,6 +201,8 @@ export default async function ReuniaoPage({
       kpis={kpis.slice(0, 4)}
       dias={Array.from({ length: totalDias }, (_, i) => String(i + 1).padStart(2, "0"))}
       porDia={agregados.porDia.map((v) => Math.round(v * 100) / 100)}
+      faixas={faixas}
+      marcos={marcos}
       porDiaSemana={agregados.porDiaSemana.map((v) => Math.round(v * 100) / 100)}
       temHora={agregados.temHora}
       horas={agregados.horas}

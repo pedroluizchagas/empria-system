@@ -229,6 +229,63 @@ async function main() {
       Boolean(erroMetaColab) || (metaColab?.length ?? 0) === 0,
     );
 
+    // ---- agenda, tarefas e comunicados (Fase 3) ----
+    console.log("\nAgenda, tarefas e comunicados (Fase 3):");
+    const { error: erroEvento } = await gerenteA.cliente.from("evento_agenda").insert({
+      empresa_id: A.empresaId,
+      tipo: "campanha",
+      titulo: "Campanha teste",
+      inicio: "2026-06-10",
+      fim: "2026-06-20",
+    });
+    checar("gerente cria evento na agenda", !erroEvento);
+
+    const { data: eventosB } = await gerenteB.cliente.from("evento_agenda").select("id");
+    checar("outra empresa NÃO vê a agenda", (eventosB?.length ?? 0) === 0);
+
+    const { data: eventoColab, error: erroEventoColab } = await colaboradorA.cliente
+      .from("evento_agenda")
+      .insert({ empresa_id: A.empresaId, titulo: "Invasão", inicio: "2026-06-01" })
+      .select();
+    checar(
+      "colaborador NÃO cria evento",
+      Boolean(erroEventoColab) || (eventoColab?.length ?? 0) === 0,
+    );
+
+    const { data: tarefaCriada, error: erroTarefa } = await gerenteA.cliente
+      .from("tarefa")
+      .insert({
+        empresa_id: A.empresaId,
+        titulo: "Trocar vitrine",
+        responsavel_id: colaboradorA.id,
+      })
+      .select("id")
+      .single();
+    checar("gerente delega tarefa ao colaborador", !erroTarefa && Boolean(tarefaCriada));
+
+    const { data: tarefaConcluida } = await colaboradorA.cliente
+      .from("tarefa")
+      .update({ status: "concluida" })
+      .eq("id", tarefaCriada.id)
+      .select("id");
+    checar("responsável conclui a própria tarefa", (tarefaConcluida?.length ?? 0) === 1);
+
+    const { data: tarefaB } = await gerenteB.cliente
+      .from("tarefa")
+      .update({ status: "aberta" })
+      .eq("id", tarefaCriada.id)
+      .select("id");
+    checar("outra empresa NÃO mexe na tarefa", (tarefaB?.length ?? 0) === 0);
+
+    const { error: erroComunicado } = await gerenteA.cliente.from("comunicado").insert({
+      empresa_id: A.empresaId,
+      titulo: "Meta batida",
+    });
+    checar("gerente publica comunicado", !erroComunicado);
+
+    const { data: comunicadosB } = await gerenteB.cliente.from("comunicado").select("id");
+    checar("outra empresa NÃO vê o mural", (comunicadosB?.length ?? 0) === 0);
+
     // ---- desfazer de verdade, como gerente A ----
     console.log("\nDesfazer (gerente A):");
     const { error: erroDesfazerFatos } = await gerenteA.cliente
